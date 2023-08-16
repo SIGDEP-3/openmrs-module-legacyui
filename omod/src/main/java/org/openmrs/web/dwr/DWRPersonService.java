@@ -11,6 +11,9 @@ package org.openmrs.web.dwr;
 
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
+import java.time.LocalDate;
+import java.time.Period;
+import java.util.Arrays;
 import java.util.Calendar;
 import java.util.Date;
 import java.util.HashMap;
@@ -18,10 +21,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.Vector;
+import java.util.stream.Collectors;
 
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.hl7.fhir.r4.model.Bundle;
 import org.openmrs.Patient;
 import org.openmrs.Person;
 import org.openmrs.PersonName;
@@ -33,6 +38,8 @@ import org.openmrs.api.PersonService;
 import org.openmrs.api.UserService;
 import org.openmrs.api.context.Context;
 import org.openmrs.web.WebUtil;
+
+import ca.uhn.fhir.rest.client.api.IGenericClient;
 
 /**
  * DWR methods for ajaxy effects on {@link Person} objects.
@@ -56,12 +63,12 @@ public class DWRPersonService {
 	 */
 	public List<?> getSimilarPeople(String name, String birthdate, String age, String gender) {
 		Vector<Object> personList;
-		
+
 		Integer userId = Context.getAuthenticatedUser().getUserId();
 		log.info(userId + "|" + name + "|" + birthdate + "|" + age + "|" + gender);
-		
+
 		PersonService ps = Context.getPersonService();
-		
+
 		Integer d = null;
 		birthdate = birthdate.trim();
 		age = age.trim();
@@ -71,11 +78,10 @@ public class DWRPersonService {
 			Date dateObject = null;
 			try {
 				dateObject = format.parse(birthdate);
-			}
-			catch (Exception e) {
+			} catch (Exception e) {
 				log.error("Error during parse birthdate", e);
 			}
-			
+
 			if (dateObject != null) {
 				Calendar c = Calendar.getInstance();
 				c.setTime(dateObject);
@@ -88,20 +94,125 @@ public class DWRPersonService {
 			d = c.get(Calendar.YEAR);
 			d = d - Integer.parseInt(age);
 		}
-		
+
 		if (gender.length() < 1) {
 			gender = null;
 		}
-		
+
 		Set<Person> persons = ps.getSimilarPeople(name, d, gender);
-		
+
 		personList = new Vector<Object>(persons.size());
 		for (Person p : persons) {
 			personList.add(PersonListItem.createBestMatch(p));
 		}
+
+		// IGenericClient client = new FhirLegacyUIConfig().getFhirClient();
+		IGenericClient client = Context.getRegisteredComponent("clientRegistryFhirClient",
+				IGenericClient.class);
+
+		String[] words = name.split(" ");
+		String fhirGender = "";
+		if (gender == "F") {
+			fhirGender = "female";
+		} else if (gender == "M") {
+			fhirGender = "male";
+
+		}
 		
+		try {
+			List<org.hl7.fhir.r4.model.Patient> mypatients = client
+					.search()
+					.forResource(org.hl7.fhir.r4.model.Patient.class)
+					.where(org.hl7.fhir.r4.model.Patient.FAMILY.matchesExactly().value(words[words.length -1]))
+					.and(org.hl7.fhir.r4.model.Patient.GIVEN.matchesExactly().value(words[0]))
+					.and(org.hl7.fhir.r4.model.Patient.GENDER.exactly().code(fhirGender)) 
+					.returnBundle(Bundle.class)
+					.execute()
+					.getEntry()
+					.stream()
+					.map(e -> (org.hl7.fhir.r4.model.Patient) e.getResource())
+					.collect(Collectors.toList());
+
+
+			for (org.hl7.fhir.r4.model.Patient fhirPatient : mypatients) {
+
+				
+				PersonListItem personLI = new PersonListItem();
+				// Set patient identifier
+				// PatientLI.setIdentifier(fhirPatient.getIdentifierFirstRep().getValue());
+				personLI.setUuid(fhirPatient.getIdentifierFirstRep().getValue());
+				// Set patient name
+				List<org.hl7.fhir.r4.model.StringType> givenNames = fhirPatient.getNameFirstRep().getGiven();
+				if (!givenNames.isEmpty()) {
+					personLI.setGivenName(WebUtil.escapeHTML(givenNames.get(0).getValue()));
+
+					StringBuilder sb = new StringBuilder();
+					for (int i = 1; i < givenNames.size(); i++) {
+						sb.append(givenNames.get(i).getValue()).append(" ");
+					}
+
+					if (sb.length() > 0) {
+						sb.deleteCharAt(sb.length() - 1);
+					}
+
+					personLI.setMiddleName(WebUtil.escapeHTML(sb.toString()));
+
+				}
+
+				personLI.setFamilyName(WebUtil.escapeHTML(fhirPatient.getNameFirstRep().getFamily()));
+				// Set patient date of birth
+				if (fhirPatient.hasBirthDate()) {
+					personLI.setBirthdate(fhirPatient.getBirthDate());
+					personLI.setBirthdateString(WebUtil.formatDate(fhirPatient.getBirthDate()));
+				}
+
+				switch (fhirPatient.getBirthDateElement().getPrecision()) {
+					case DAY:
+						personLI.setBirthdateEstimated(false);
+						break;
+					case MONTH:
+					case YEAR:
+						personLI.setBirthdateEstimated(true);
+						break;
+				}
+				// Set patient Age
+				LocalDate today = LocalDate.now();
+				LocalDate localBirthDate = fhirPatient.getBirthDate().toInstant()
+						.atZone(java.time.ZoneId.systemDefault())
+						.toLocalDate();
+				Period period = Period.between(localBirthDate, today);
+				personLI.setAge(period.getYears());
+
+				// Set patient gender
+				if (fhirPatient.hasGender()) {
+					switch (fhirPatient.getGender()) {
+						case MALE:
+							personLI.setGender("M");
+							break;
+						case FEMALE:
+							personLI.setGender("F");
+							break;
+						case OTHER:
+							personLI.setGender("O");
+							break;
+						case UNKNOWN:
+							personLI.setGender("U");
+							break;
+					}
+				}
+				// Tag for patient from HAPI
+				personLI.setPatientPresent(fhirPatient.getIdElement().getIdPart());
+
+				personList.add(personLI);
+
+			}
+		} catch (Exception e) {
+			log.error("Error while attempting to reach server", e);
+
+		}
+
 		return personList;
-		
+
 	}
 	
 	/**
@@ -268,7 +379,7 @@ public class DWRPersonService {
 				}
 				
 			} else {
-				//TODO add batch person look up to the API and use it here and FIX the javadocs
+				// TODO add batch person look up to the API and use it here and FIX the javadocs
 				// if no roles were given, search for normal people
 				PersonService ps = Context.getPersonService();
 				for (Person p : ps.getPeople(searchPhrase, null, includeVoided)) {
@@ -320,7 +431,7 @@ public class DWRPersonService {
 	public Map<String, Object> findCountAndPeople(String phrase, boolean includeRetired, String roles, Integer start,
 	        Integer length, boolean getMatchCount) throws APIException {
 		
-		//Map to return
+		// Map to return
 		Map<String, Object> resultsMap = new HashMap<String, Object>();
 		Vector<Object> objectList = new Vector<Object>();
 		try {
@@ -338,14 +449,15 @@ public class DWRPersonService {
 					
 					personCount = us.getCountOfUsers(phrase, roleList, includeRetired);
 				} else {
-					//TODO get the person count after adding the get count method for persons to the API
+					// TODO get the person count after adding the get count method for persons to
+					// the API
 					
 				}
 				
 			}
 			
-			//if we have any matches or this isn't the first ajax call when the caller
-			//requests for the count
+			// if we have any matches or this isn't the first ajax call when the caller
+			// requests for the count
 			if (personCount > 0 || !getMatchCount) {
 				objectList = findBatchOfPeopleByRoles(phrase, includeRetired, roles, start, length);
 			}

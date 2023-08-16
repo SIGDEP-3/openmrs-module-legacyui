@@ -12,12 +12,17 @@ package org.openmrs.web.controller.person;
 import java.io.UnsupportedEncodingException;
 import java.net.URLEncoder;
 import java.text.ParseException;
+import java.time.LocalDate;
+import java.time.Period;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Calendar;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Vector;
+import java.util.stream.Collectors;
 
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServletRequest;
@@ -26,15 +31,33 @@ import javax.servlet.http.HttpServletResponse;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.hl7.fhir.r4.model.Bundle;
+import org.openmrs.Patient;
 import org.openmrs.Person;
 import org.openmrs.api.PersonService;
 import org.openmrs.api.context.Context;
+import org.openmrs.module.fhir2.api.search.param.SearchParameterMap;
+import org.openmrs.web.WebUtil;
 import org.openmrs.web.dwr.PersonListItem;
 import org.springframework.validation.BindException;
 import org.springframework.web.bind.ServletRequestUtils;
 import org.springframework.web.servlet.ModelAndView;
 import org.springframework.web.servlet.mvc.SimpleFormController;
 import org.springframework.web.servlet.view.RedirectView;
+
+import ca.uhn.fhir.rest.client.api.IGenericClient;
+import ca.uhn.fhir.rest.gclient.DateClientParam;
+import ca.uhn.fhir.rest.gclient.ICriterion;
+import ca.uhn.fhir.rest.gclient.StringClientParam;
+import ca.uhn.fhir.rest.param.StringOrListParam;
+import ca.uhn.fhir.rest.param.StringParam;
+
+import org.hl7.fhir.r4.model.Parameters;
+import org.hl7.fhir.r4.model.Reference;
+import org.hl7.fhir.r4.model.Parameters.ParametersParameterComponent;
+import org.hl7.fhir.r4.model.Enumerations.AdministrativeGender;
+
+//import org.hl7.fhir.r4.model.Enumerations.AdministrativeGenderEnum;
 
 public class AddPersonController extends SimpleFormController {
 	
@@ -66,6 +89,8 @@ public class AddPersonController extends SimpleFormController {
 	
 	private static final String PERSON_ID = "personId";
 	
+	private static final String PATIENT_PRESENT = "patientPresent";
+	
 	private static final String VIEW_TYPE = "viewType";
 	
 	private static boolean invalidAgeFormat = false;
@@ -80,12 +105,14 @@ public class AddPersonController extends SimpleFormController {
 	        BindException errors) throws Exception {
 		
 		Map<String, String> person = getParametersFromRequest(request);
-		
 		String personId = person.get(PERSON_ID);
 		String viewType = person.get(VIEW_TYPE);
 		String personType = person.get(PERSON_TYPE);
-		
-		if (StringUtils.isEmpty(personId)) {
+		String personp = person.get(PATIENT_PRESENT);
+		if (StringUtils.isNotEmpty(personp)) {
+			return new ModelAndView(new RedirectView(request.getContextPath()
+			        + "/admin/patients/shortPatientForm.form?fhirPatientId=" + personp));
+		} else if (StringUtils.isEmpty(personId)) {
 			// if they didn't pick a person, continue on to the edit screen no matter what type of view was requested)
 			if ("view".equals(viewType) || "shortEdit".equals(viewType)) {
 				viewType = "shortEdit";
@@ -144,7 +171,6 @@ public class AddPersonController extends SimpleFormController {
 			String name = person.get(NAME);
 			String birthdate = person.get(BIRTH_DATE);
 			String age = person.get(AGE);
-			
 			log.debug("name: " + name + " birthdate: " + birthdate + " age: " + age + " gender: " + gender);
 			
 			if (StringUtils.isNotEmpty(name) || StringUtils.isNotEmpty(birthdate) || StringUtils.isNotEmpty(age)
@@ -196,7 +222,117 @@ public class AddPersonController extends SimpleFormController {
 				}
 				
 				personList = new Vector<PersonListItem>();
+
+
+				// IGenericClient client = new FhirLegacyUIConfig().getFhirClient();
+				IGenericClient client = Context.getRegisteredComponent("clientRegistryFhirClient",
+						IGenericClient.class);
+
+
+						String[] words = name.split(" ");
+						String fhirGender= "";
+						if (gender.equals("F")){
+							fhirGender="female";
+						}else if(gender.equals("M")){
+							fhirGender="male";
+
+						}
+
+				try {
+					 List<org.hl7.fhir.r4.model.Patient> mypatients = client
+							.search()
+							.forResource(org.hl7.fhir.r4.model.Patient.class)
+							.where(org.hl7.fhir.r4.model.Patient.FAMILY.matchesExactly().value(words[words.length -1]))
+							.and(org.hl7.fhir.r4.model.Patient.GIVEN.matchesExactly().value(words[0]))
+							.and(org.hl7.fhir.r4.model.Patient.GENDER.exactly().code(fhirGender))
+							.returnBundle(Bundle.class)
+							.execute()
+							.getEntry()
+							.stream()
+							.map(e -> (org.hl7.fhir.r4.model.Patient) e.getResource())
+							.collect(Collectors.toList());
+						
+							for (org.hl7.fhir.r4.model.Patient fhirPatient : mypatients) {
+									PersonListItem personLI = new PersonListItem();
+									// Set patient identifier
+									//PatientLI.setIdentifier(fhirPatient.getIdentifierFirstRep().getValue());
+									personLI.setUuid(fhirPatient.getIdentifierFirstRep().getValue());
+									// Set patient name
+									List<org.hl7.fhir.r4.model.StringType> givenNames = fhirPatient.getNameFirstRep().getGiven();
+									if (!givenNames.isEmpty()) {
+										personLI.setGivenName(WebUtil.escapeHTML(givenNames.get(0).getValue()));
+				
+										StringBuilder sb = new StringBuilder();
+										for (int i = 1; i < givenNames.size(); i++) {
+											sb.append(givenNames.get(i).getValue()).append(" ");
+										}
+				
+										if (sb.length() > 0) {
+											sb.deleteCharAt(sb.length() - 1);
+										}
+				
+										personLI.setMiddleName(WebUtil.escapeHTML(sb.toString()));
+				
+									}
+				
+									personLI.setFamilyName(WebUtil.escapeHTML(fhirPatient.getNameFirstRep().getFamily()));
+									// Set patient date of birth
+									if (fhirPatient.hasBirthDate()) {
+										personLI.setBirthdate(fhirPatient.getBirthDate());
+										personLI.setBirthdateString(WebUtil.formatDate(fhirPatient.getBirthDate()));
+									}
+				
+									switch (fhirPatient.getBirthDateElement().getPrecision()) {
+										case DAY:
+										personLI.setBirthdateEstimated(false);
+											break;
+										case MONTH:
+										case YEAR:
+										personLI.setBirthdateEstimated(true);
+											break;
+									}
+									// Set patient Age
+									LocalDate today = LocalDate.now();
+									LocalDate localBirthDate = fhirPatient.getBirthDate().toInstant()
+											.atZone(java.time.ZoneId.systemDefault())
+											.toLocalDate();
+									Period period = Period.between(localBirthDate, today);
+									personLI.setAge(period.getYears());
+									// Set patient gender
+									if (fhirPatient.hasGender()) {
+										switch (fhirPatient.getGender()) {
+											case MALE:
+												personLI.setGender("M");
+												break;
+											case FEMALE:
+												personLI.setGender("F");
+												break;
+											case OTHER:
+												personLI.setGender("O");
+												break;
+											case UNKNOWN:
+												personLI.setGender("U");
+												break;
+										}
+									}
+									// Tag for patient from HAPI
+									personLI.setPatientPresent(fhirPatient.getIdElement().getIdPart());
+									personList.add(personLI);
+				
+								
+				
+							}
+				
+					// How do we search by partial identifiers and on all identifiers
+
+				} catch (Exception e) {
+					log.error("Error while attempting to reach server", e);
+
+				}
 				for (Person p : ps.getSimilarPeople(name, d, gender)) {
+
+
+
 					personList.add(PersonListItem.createBestMatch(p));
 				}
 			}
@@ -231,7 +367,7 @@ public class AddPersonController extends SimpleFormController {
 		List personList = (List) o;
 		
 		log.debug("Found list of size: " + personList.size());
-		
+		System.out.println("Found list of size: " + personList.size());
 		if (personList.size() < 1 && Context.isAuthenticated()) {
 			Map<String, String> person = getParametersFromRequest(request);
 			
@@ -326,6 +462,7 @@ public class AddPersonController extends SimpleFormController {
 	 */
 	private Map<String, String> getParametersFromRequest(HttpServletRequest request) {
 		Map<String, String> person = new HashMap<String, String>();
+
 		person.put(NAME, ServletRequestUtils.getStringParameter(request, "addName", ""));
 		person.put(BIRTH_DATE, ServletRequestUtils.getStringParameter(request, "addBirthdate", ""));
 		person.put(AGE, ServletRequestUtils.getStringParameter(request, "addAge", ""));
@@ -333,6 +470,7 @@ public class AddPersonController extends SimpleFormController {
 		person.put(PERSON_TYPE, ServletRequestUtils.getStringParameter(request, "personType", "patient"));
 		person.put(PERSON_ID, ServletRequestUtils.getStringParameter(request, "personId", ""));
 		person.put(VIEW_TYPE, ServletRequestUtils.getStringParameter(request, "viewType", ""));
+		person.put(PATIENT_PRESENT, ServletRequestUtils.getStringParameter(request, "patientPresent", ""));
 		
 		return person;
 	}

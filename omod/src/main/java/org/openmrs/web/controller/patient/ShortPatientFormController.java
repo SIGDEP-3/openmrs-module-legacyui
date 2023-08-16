@@ -720,14 +720,15 @@ public class ShortPatientFormController {
         .stream()
         .map(patientLink -> patientLink.getOther())
         .collect(Collectors.toList());
-		String CRUID = null;
-
-		for (Reference link : links) {
-			CRUID = extractUUID(link.getReference());
+		String telecom = "";
+ 
+		if (fhirPatient.getTelecomFirstRep() != null && fhirPatient.getTelecomFirstRep().getValue() != null) {
+			telecom = fhirPatient.getTelecomFirstRep().getValue();
 		}
+		
 		//Add null checker for attribute CRUID
-		PersonAttributeType type = Context.getPersonService().getPersonAttributeTypeByUuid("793a8d9f-63c6-4edd-a321-53b23165be50");
-		PersonAttribute attribute = new PersonAttribute(type, CRUID);
+		PersonAttributeType type = Context.getPersonService().getPersonAttributeTypeByUuid("2b4fbe39-3281-42fa-b45b-e5cfee7bf1db");
+		PersonAttribute attribute = new PersonAttribute(type, telecom);
 		p.addAttribute(attribute);
 
 		// Set patient name
@@ -830,7 +831,7 @@ public class ShortPatientFormController {
 			}
 			
 		}
-		if(CRUID != null){
+		/* if(CRUID != null){
 			PatientIdentifier pi = new PatientIdentifier();
 			pi.setIdentifier(CRUID);
 			pi.setIdentifierType(Context.getPatientService().getPatientIdentifierTypeByUuid("43a6e699-c2b8-4d5f-9e7f-cf19448d59b7"));
@@ -838,7 +839,7 @@ public class ShortPatientFormController {
 			pi.setPreferred(false);
 
 			p.addIdentifier(pi);
-		}
+		} */
 		//Patient patient = Context.getPatientService().savePatient(p);
 		//resultsMap.put("success", patient.getPatientId());
 		
