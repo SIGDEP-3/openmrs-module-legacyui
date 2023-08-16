@@ -80,7 +80,7 @@
 		
 		<br/>
 		<input type="hidden" name="personId" id="personId" />
-		<input type="hidden" name="patientPresent" id="patientPresent" value="men say"/>
+		<input type="hidden" name="patientPresent" id="patientPresent"/>
 
 		<input type="hidden" name="personType" value="<c:out value='${param.personType}' />" />
 		<input type="hidden" name="viewType" value="<c:out value='${param.viewType}' />" />
