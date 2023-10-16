@@ -297,6 +297,24 @@
 			$j('#'+location + '_NA').show();
 		}
 	}
+
+	// Function to make a GET request to an endpoint
+	function fetchData() {
+            // Replace 'your-api-endpoint' with your actual endpoint URL
+            fetch('http://ip.jsontest.com')
+                .then(response => response.json())
+                .then(data => {
+                    // Display the fetched data in a popup (modal dialog)
+                    alert('Fetched Data: ' + JSON.stringify(data));
+
+                    // Once the user clicks "OK," continue with the form submission
+                    document.getElementById('myForm').submit();
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    // Handle any errors here
+                });
+    }
 </script>
 
 <style>
@@ -314,6 +332,27 @@
 	.lastCell {
 		border-bottom: 1px lightgray solid;
 	}
+
+		/* Define a specific class for the table */
+.custom-table {
+    border-collapse: collapse;
+    width: 100%;
+    margin-top: 20px;
+}
+
+.custom-table th, .custom-table td {
+    border: 1px solid #dddddd;
+    text-align: left;
+    padding: 8px;
+}
+
+.custom-table th {
+    background-color: #f2f2f2;
+}
+
+.custom-dialog {
+    top: 10px !important; 
+}
 </style>
 
 <openmrs:globalProperty key="use_patient_attribute.mothersName" defaultValue="false" var="showMothersName"/>
@@ -321,6 +360,7 @@
 <spring:hasBindErrors name="patientModel">
     <openmrs_tag:errorNotify errors="${errors}" />
 </spring:hasBindErrors>
+<span id="extraData1" style="display: none;">${opencMatches}</span>
 
 <form:form method="post" action="shortPatientForm.form" onsubmit="removeHiddenRows()" modelAttribute="patientModel">
 	<c:if test="${patientModel.patient.patientId == null}"><h2><openmrs:message code="Patient.create"/></h2></c:if>
@@ -681,11 +721,13 @@
 		</td>
 	</tr>
 	</table>
-	
+	<input type="hidden" id="continueFlag" name="continueFlag" >
+
 	<input type="hidden" name="patientId" value="<c:out value="${param.patientId}" />" />
 	
 	<br />
 	<input type="submit" value="<openmrs:message code="general.save" />" name="action" id="addButton"> &nbsp; &nbsp; 
+
 	<input type="button" value="<openmrs:message code="general.back" />" onclick="history.go(-1);">	
 </form:form>
 
@@ -694,6 +736,105 @@
 	var idT = document.getElementById('identifiers0.identifierType');
 	var idTi = idT.options[idT.selectedIndex].value;
 	toggleLocationBoxAndIndentifierTypeWarning(idTi,'initialLocationBox0',0);
+//	window.onload = function() {
+	var content = document.getElementById('extraData1').textContent;
+
+	if (content.trim() !== '') {
+	// Your script code here
+	//alert('Fetched Data: ' + document.getElementById('extraData').textContent);
+	$j('<div>').dialog({
+        title: '<openmrs:message code="Patient.merge.title"/>',
+        autoOpen: true, // Automatically open the dialog when the page loads
+        draggable: false,
+        resizable: false,
+        width: '95%',
+		dialogClass: 'custom-dialog', // Define a custom CSS class
+        modal: true,
+		buttons: {
+								"Continue": function() {
+								$j(this).dialog("close");
+								$j('#continueFlag').val('continue');
+								//$j('input[name="continueFlag"]').val('yourDynamicValue');
+
+								$j('#addButton').click(); 
+
+
+								},
+								"Cancel": function() {
+									$j(this).dialog("close");
+								}
+							},
+        open: function() {
+           // var tableHtml = createTable(jsonObject); // Create the table
+            //$j(this).html(tableHtml); // Set the table as the dialog content
+			//document.getElementById('extraData1').textContent;
+			//var content = document.getElementById('extraData1').textContent;
+       // $j(this).html(content);
+		$j(this).html('<div id="container"></div>' );
+
+		var jsonObject = null;
+		try {
+     jsonObject = JSON.parse(content);
+    console.log(jsonObject);
+} catch (error) {
+    console.error('Error parsing JSON:', error);
+}
+		createTable(jsonObject.parent, 'New Patient');
+        createTable(jsonObject.auto, 'Auto Matches');
+        createTable(jsonObject.potential, 'Potential Matches');
+        createTable(jsonObject.conflict, 'Conflict Matches');
+
+        }
+    });
+
+
+	function createTable(data, category) {
+            var tableHtml = '<table class="custom-table">';
+			tableHtml += '<thead><tr><th>ID</th><th>Given</th><th>Family</th><th>Birth Date</th><th>Gender</th><th>Phone</th><th>Extensions</th><th>Identifiers</th><th>Status</th></tr></thead>';
+
+            tableHtml += '<tbody>';
+
+            if (data.length === 0) {
+                tableHtml += '<tr><td colspan="9">No patients available</td></tr>';
+            } else {
+                for (var i = 0; i < data.length; i++) {
+                    tableHtml += '<tr>';
+                    tableHtml += '<td>' + data[i].id + '</td>';
+                    tableHtml += '<td>' + data[i].given + '</td>';
+                    tableHtml += '<td>' + data[i].family + '</td>';
+                    tableHtml += '<td>' + data[i].birthDate + '</td>';
+					tableHtml += '<td>' + data[i].gender + '</td>';
+                    tableHtml += '<td>' + data[i].phone + '</td>';
+
+					 // Separate columns for extensions and identifiers
+					 tableHtml += '<td>';
+						for (var extensionKey in data[i]) {
+							if (extensionKey.startsWith('extension_')) {
+								tableHtml += '<div><strong>' + extensionKey.substring(11) + ':</strong> ' + data[i][extensionKey] + '</div>';
+							}
+						}
+						tableHtml += '</td>';
+
+						tableHtml += '<td>';
+						for (var identifierKey in data[i]) {
+							if (identifierKey.startsWith('identifier_')) {
+								tableHtml += '<div><strong>' + identifierKey.substring(11) + ':</strong> ' + data[i][identifierKey] + '</div>';
+							}
+						}
+						tableHtml += '</td>';
+						tableHtml += '<td>' + (data[i].status || '') + '</td>';
+
+                    tableHtml += '</tr>';
+                }
+            }
+
+            tableHtml += '</tbody>';
+            tableHtml += '</table>';
+
+            $j('#container').append('<h2>' + category + '</h2>');
+            $j('#container').append(tableHtml);
+        }
+};
 
 </script>
 
