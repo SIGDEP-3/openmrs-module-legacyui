@@ -788,14 +788,16 @@
     });
 
 
+
+
 	function createTable(data, category) {
             var tableHtml = '<table class="custom-table">';
-			tableHtml += '<thead><tr><th>ID</th><th>Given</th><th>Family</th><th>Birth Date</th><th>Gender</th><th>Phone</th><th>Extensions</th><th>Identifiers</th><th>Status</th></tr></thead>';
+			tableHtml += '<thead><tr><th>ID</th><th>Given</th><th>Family</th><th>Birth Date</th><th>Gender</th><th>Phone</th><th>Extensions</th><th>Identifiers</th><th>Status</th><th>Action</th></tr></thead>';
 
             tableHtml += '<tbody>';
 
             if (data.length === 0) {
-                tableHtml += '<tr><td colspan="9">No patients available</td></tr>';
+                tableHtml += '<tr><td colspan="10">No patients available</td></tr>';
             } else {
                 for (var i = 0; i < data.length; i++) {
                     tableHtml += '<tr>';
@@ -810,7 +812,7 @@
 					 tableHtml += '<td>';
 						for (var extensionKey in data[i]) {
 							if (extensionKey.startsWith('extension_')) {
-								tableHtml += '<div><strong>' + extensionKey.substring(11) + ':</strong> ' + data[i][extensionKey] + '</div>';
+								tableHtml += '<div><strong>' + extensionKey.substring(10) + ':</strong> ' + data[i][extensionKey] + '</div>';
 							}
 						}
 						tableHtml += '</td>';
@@ -823,7 +825,11 @@
 						}
 						tableHtml += '</td>';
 						tableHtml += '<td>' + (data[i].status || '') + '</td>';
-
+						if(category !== 'New Patient'){
+						tableHtml += '<td><button class="importButton" onclick="importData(this)">Import</button></td>';
+						}else{
+							tableHtml += '<td></td>';
+						}
                     tableHtml += '</tr>';
                 }
             }
@@ -834,6 +840,28 @@
             $j('#container').append('<h2>' + category + '</h2>');
             $j('#container').append(tableHtml);
         }
+
+		function importData(button) {
+        // Find the closest tr (table row) to the clicked button
+        var row = button.closest('tr');
+
+        // Get the content of the first td (assuming it contains the ID)
+        var id = row.querySelector('td:first-child').textContent;
+		document.location = "shortPatientForm.form?fhirPatientId=" + id;
+
+    	}
+
+		function handleSaveResults(result) {
+					// This method will be called by DWR with the search results
+					// Do something with the search results here, such as displaying them on the page
+					if (result.hasOwnProperty("success")){
+						document.location = "admin/patients/shortPatientForm.form?fhirPatientId=" + result["success"];
+
+					} else {
+						alert("Error: " + result["error"]);
+
+					}
+		}
 };
 
 </script>
