@@ -254,6 +254,10 @@ public class ShortPatientFormController {
 		String opencrMatchesUrl = Context.getAdministrationService().getGlobalProperty("opencrMatchesUrl",
 				"http://localhost:3000/ocrux/user/authenticate?username=root@intrahealth.org&password=intrahealth");
 
+		String opencrMatchesCheckFlag = Context.getAdministrationService().getGlobalProperty(
+				"legacyui.enableMatchCheck",
+				"true");
+
 		String token = null;
 		String opencMatches = null;
 
@@ -309,74 +313,93 @@ public class ShortPatientFormController {
 				contactPoint.setSystem(ContactPoint.ContactPointSystem.PHONE);
 
 			}
-			List<ContactPoint> myList = new ArrayList<>();
-			myList.add(contactPoint);
-			org.hl7.fhir.r4.model.Patient fhirResource = patientTranslator.toFhirResource(patient);
 
-			fhirResource.setTelecom(myList);
+			if (opencrMatchesCheckFlag.equals("true")) {
+				List<ContactPoint> myList = new ArrayList<>();
+				myList.add(contactPoint);
+				org.hl7.fhir.r4.model.Patient fhirResource = patientTranslator.toFhirResource(patient);
 
-			// Check if the conversion was successful
-			if (fhirResource != null) {
-				// Now you can safely use the result
-				fhirResource.getName().get(0).setUse(HumanName.NameUse.OFFICIAL);
+				fhirResource.setTelecom(myList);
 
-				// Create a FhirContext
-				FhirContext fhirContext = FhirContext.forR4();
+				// Check if the conversion was successful
+				if (fhirResource != null) {
+					// Now you can safely use the result
+					fhirResource.getName().get(0).setUse(HumanName.NameUse.OFFICIAL);
 
-				// Create a JSON parser
-				IParser jsonParser = fhirContext.newJsonParser();
+					// Create a FhirContext
+					FhirContext fhirContext = FhirContext.forR4();
 
-				// Serialize the Patient resource to JSON
-				String jsonPayload = jsonParser.encodeResourceToString(fhirResource);
+					// Create a JSON parser
+					IParser jsonParser = fhirContext.newJsonParser();
 
-				// Now, jsonPayload contains the JSON representation of the Patient
-				System.out.println("JSON Payload:\n" + jsonPayload);
+					// Serialize the Patient resource to JSON
+					String jsonPayload = jsonParser.encodeResourceToString(fhirResource);
 
-				// Execute the request
-				try (Response response = client.newCall(request2).execute()) {
-					// Check if the request was successful (HTTP status code 201 for successful
-					// creation)
-					if (response.isSuccessful()) {
-						// Print the response body
-						String responseBody1 = response.body().string();
+					// Now, jsonPayload contains the JSON representation of the Patient
+					System.out.println("JSON Payload:\n" + jsonPayload);
 
-						// String responseBody = response.body().string();
-						// Parse the JSON response to get the token
-						token = parseToken(responseBody1);
+					// Execute the request
+					try (Response response = client.newCall(request2).execute()) {
+						// Check if the request was successful (HTTP status code 201 for successful
+						// creation)
+						if (response.isSuccessful()) {
+							// Print the response body
+							String responseBody1 = response.body().string();
 
-						Request apiRequest = new Request.Builder()
-								.url(opencrMatchesUrl)
-								.post(RequestBody.create(MediaType.parse("application/json"), jsonPayload))
-								.header("Authorization", "Bearer " + token)
-								.build();
+							// String responseBody = response.body().string();
+							// Parse the JSON response to get the token
+							token = parseToken(responseBody1);
 
-						try (Response apiResponse = client.newCall(apiRequest).execute()) {
-							if (apiResponse.isSuccessful()) {
-								opencMatches = apiResponse.body().string();
-								model.addAttribute("opencMatches", opencMatches);
-							} else {
-								System.out.println("Error: " + apiResponse.code() + " - " + apiResponse.message());
+							Request apiRequest = new Request.Builder()
+									.url(opencrMatchesUrl)
+									.post(RequestBody.create(MediaType.parse("application/json"), jsonPayload))
+									.header("Authorization", "Bearer " + token)
+									.build();
+
+							try (Response apiResponse = client.newCall(apiRequest).execute()) {
+								if (apiResponse.isSuccessful()) {
+									opencMatches = apiResponse.body().string();
+									model.addAttribute("opencMatches", opencMatches);
+								} else {
+									model.addAttribute("queryError", "OpenCR patient match issue");
+
+									System.out.println("Error: " + apiResponse.code() + " - " + apiResponse.message());
+									return "module/legacyui/admin/patients/shortPatientForm";
+
+								}
+							} catch (IOException e) {
+								model.addAttribute("queryError", "OpenCR server error");
+
+								e.printStackTrace();
+								return "module/legacyui/admin/patients/shortPatientForm";
+
 							}
-						} catch (IOException e) {
-							e.printStackTrace();
+
+						} else {
+							System.out.println("Error: " + response.code() + " - " + response.message());
+							model.addAttribute("queryError", "Communication with OpenCR server is unsuccessful");
+
+							return "module/legacyui/admin/patients/shortPatientForm";
 						}
+					} catch (IOException e) {
+						
+						model.addAttribute("queryError", "Authentication with OpenCR failed");
+						
+						e.printStackTrace();
+						return "module/legacyui/admin/patients/shortPatientForm";
 
-					} else {
-						System.out.println("Error: " + response.code() + " - " + response.message());
 					}
-				} catch (IOException e) {
-					e.printStackTrace();
+					// Further processing with myXml
+					// ...
+				} else {
+					// Handle the case where conversion to FHIR resource failed
+					System.out.println("Error: Conversion to FHIR resource failed");
 				}
-				// Further processing with myXml
-				// ...
-			} else {
-				// Handle the case where conversion to FHIR resource failed
-				System.out.println("Error: Conversion to FHIR resource failed");
-			}
 
-			if (!continueFlag.equals("continue")) {
-				// return "module/legacyui/template/popupMessage";
-				return "module/legacyui/admin/patients/shortPatientForm";
+				if (!continueFlag.equals("continue")) {
+					// return "module/legacyui/template/popupMessage";
+					return "module/legacyui/admin/patients/shortPatientForm";
+				}
 
 			}
 

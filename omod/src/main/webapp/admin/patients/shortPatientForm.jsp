@@ -361,6 +361,7 @@
     <openmrs_tag:errorNotify errors="${errors}" />
 </spring:hasBindErrors>
 <span id="extraData1" style="display: none;">${opencMatches}</span>
+<span id="extraData2" style="display: none;">${queryError}</span>
 
 <form:form method="post" action="shortPatientForm.form" onsubmit="removeHiddenRows()" modelAttribute="patientModel">
 	<c:if test="${patientModel.patient.patientId == null}"><h2><openmrs:message code="Patient.create"/></h2></c:if>
@@ -732,57 +733,58 @@
 </form:form>
 
 <script type="text/javascript">
-	updateAge();
-	var idT = document.getElementById('identifiers0.identifierType');
-	var idTi = idT.options[idT.selectedIndex].value;
-	toggleLocationBoxAndIndentifierTypeWarning(idTi,'initialLocationBox0',0);
+updateAge();
+var idT = document.getElementById('identifiers0.identifierType');
+var idTi = idT.options[idT.selectedIndex].value;
+toggleLocationBoxAndIndentifierTypeWarning(idTi,'initialLocationBox0',0);
 //	window.onload = function() {
-	var content = document.getElementById('extraData1').textContent;
+var content = document.getElementById('extraData1').textContent;
+var content2 = document.getElementById('extraData2').textContent;
 
-	if (content.trim() !== '') {
-	// Your script code here
-	//alert('Fetched Data: ' + document.getElementById('extraData').textContent);
-	$j('<div>').dialog({
+if (content.trim() !== '') {
+    // Your script code here
+    //alert('Fetched Data: ' + document.getElementById('extraData').textContent);
+    $j('<div>').dialog({
         title: '<openmrs:message code="Patient.merge.title"/>',
         autoOpen: true, // Automatically open the dialog when the page loads
         draggable: false,
         resizable: false,
         width: '95%',
-		dialogClass: 'custom-dialog', // Define a custom CSS class
+        dialogClass: 'custom-dialog', // Define a custom CSS class
         modal: true,
-		buttons: {
-								"Continue": function() {
-								$j(this).dialog("close");
-								$j('#continueFlag').val('continue');
-								//$j('input[name="continueFlag"]').val('yourDynamicValue');
+        buttons: {
+            "Continue": function() {
+                $j(this).dialog("close");
+                $j('#continueFlag').val('continue');
+                //$j('input[name="continueFlag"]').val('yourDynamicValue');
 
-								$j('#addButton').click(); 
+                $j('#addButton').click();
 
 
-								},
-								"Cancel": function() {
-									$j(this).dialog("close");
-								}
-							},
+            },
+            "Cancel": function() {
+                $j(this).dialog("close");
+            }
+        },
         open: function() {
-           // var tableHtml = createTable(jsonObject); // Create the table
+            // var tableHtml = createTable(jsonObject); // Create the table
             //$j(this).html(tableHtml); // Set the table as the dialog content
-			//document.getElementById('extraData1').textContent;
-			//var content = document.getElementById('extraData1').textContent;
-       // $j(this).html(content);
-		$j(this).html('<div id="container"></div>' );
+            //document.getElementById('extraData1').textContent;
+            //var content = document.getElementById('extraData1').textContent;
+            // $j(this).html(content);
+            $j(this).html('<div id="container"></div>' );
 
-		var jsonObject = null;
-		try {
-     jsonObject = JSON.parse(content);
-    console.log(jsonObject);
-} catch (error) {
-    console.error('Error parsing JSON:', error);
-}
-		createTable(jsonObject.parent, 'New Patient');
-        createTable(jsonObject.auto, 'Auto Matches');
-        createTable(jsonObject.potential, 'Potential Matches');
-        createTable(jsonObject.conflict, 'Conflict Matches');
+            var jsonObject = null;
+            try {
+                jsonObject = JSON.parse(content);
+                console.log(jsonObject);
+            } catch (error) {
+                console.error('Error parsing JSON:', error);
+            }
+            createTable(jsonObject.parent, 'New Patient');
+            createTable(jsonObject.auto, 'Auto Matches');
+            createTable(jsonObject.potential, 'Potential Matches');
+            createTable(jsonObject.conflict, 'Conflict Matches');
 
         }
     });
@@ -790,80 +792,110 @@
 
 
 
-	function createTable(data, category) {
-            var tableHtml = '<table class="custom-table">';
-			tableHtml += '<thead><tr><th>ID</th><th>Given</th><th>Family</th><th>Birth Date</th><th>Gender</th><th>Phone</th><th>Extensions</th><th>Identifiers</th><th>Status</th><th>Action</th></tr></thead>';
+    function createTable(data, category) {
+        var tableHtml = '<table class="custom-table">';
+        tableHtml += '<thead><tr><th>ID</th><th>Given</th><th>Family</th><th>Birth Date</th><th>Gender</th><th>Phone</th><th>Extensions</th><th>Identifiers</th><th>Status</th><th>Action</th></tr></thead>';
 
-            tableHtml += '<tbody>';
+        tableHtml += '<tbody>';
 
-            if (data.length === 0) {
-                tableHtml += '<tr><td colspan="10">No patients available</td></tr>';
-            } else {
-                for (var i = 0; i < data.length; i++) {
-                    tableHtml += '<tr>';
-                    tableHtml += '<td>' + data[i].id + '</td>';
-                    tableHtml += '<td>' + data[i].given + '</td>';
-                    tableHtml += '<td>' + data[i].family + '</td>';
-                    tableHtml += '<td>' + data[i].birthDate + '</td>';
-					tableHtml += '<td>' + data[i].gender + '</td>';
-                    tableHtml += '<td>' + data[i].phone + '</td>';
+        if (data.length === 0) {
+            tableHtml += '<tr><td colspan="10">No patients available</td></tr>';
+        } else {
+            for (var i = 0; i < data.length; i++) {
+                tableHtml += '<tr>';
+                tableHtml += '<td>' + data[i].id + '</td>';
+                tableHtml += '<td>' + data[i].given + '</td>';
+                tableHtml += '<td>' + data[i].family + '</td>';
+                tableHtml += '<td>' + data[i].birthDate + '</td>';
+                tableHtml += '<td>' + data[i].gender + '</td>';
+                tableHtml += '<td>' + data[i].phone + '</td>';
 
-					 // Separate columns for extensions and identifiers
-					 tableHtml += '<td>';
-						for (var extensionKey in data[i]) {
-							if (extensionKey.startsWith('extension_')) {
-								tableHtml += '<div><strong>' + extensionKey.substring(10) + ':</strong> ' + data[i][extensionKey] + '</div>';
-							}
-						}
-						tableHtml += '</td>';
-
-						tableHtml += '<td>';
-						for (var identifierKey in data[i]) {
-							if (identifierKey.startsWith('identifier_')) {
-								tableHtml += '<div><strong>' + identifierKey.substring(11) + ':</strong> ' + data[i][identifierKey] + '</div>';
-							}
-						}
-						tableHtml += '</td>';
-						tableHtml += '<td>' + (data[i].status || '') + '</td>';
-						if(category !== 'New Patient'){
-						tableHtml += '<td><button class="importButton" onclick="importData(this)">Import</button></td>';
-						}else{
-							tableHtml += '<td></td>';
-						}
-                    tableHtml += '</tr>';
+                // Separate columns for extensions and identifiers
+                tableHtml += '<td>';
+                for (var extensionKey in data[i]) {
+                    if (extensionKey.startsWith('extension_')) {
+                        tableHtml += '<div><strong>' + extensionKey.substring(10) + ':</strong> ' + data[i][extensionKey] + '</div>';
+                    }
                 }
+                tableHtml += '</td>';
+
+                tableHtml += '<td>';
+                for (var identifierKey in data[i]) {
+                    if (identifierKey.startsWith('identifier_')) {
+                        tableHtml += '<div><strong>' + identifierKey.substring(11) + ':</strong> ' + data[i][identifierKey] + '</div>';
+                    }
+                }
+                tableHtml += '</td>';
+                tableHtml += '<td>' + (data[i].status || '') + '</td>';
+                if(category !== 'New Patient'){
+                    tableHtml += '<td><button class="importButton" onclick="importData(this)">Import</button></td>';
+                }else{
+                    tableHtml += '<td></td>';
+                }
+                tableHtml += '</tr>';
             }
-
-            tableHtml += '</tbody>';
-            tableHtml += '</table>';
-
-            $j('#container').append('<h2>' + category + '</h2>');
-            $j('#container').append(tableHtml);
         }
 
-		function importData(button) {
+        tableHtml += '</tbody>';
+        tableHtml += '</table>';
+
+        $j('#container').append('<h2>' + category + '</h2>');
+        $j('#container').append(tableHtml);
+    }
+
+    function importData(button) {
         // Find the closest tr (table row) to the clicked button
         var row = button.closest('tr');
 
         // Get the content of the first td (assuming it contains the ID)
         var id = row.querySelector('td:first-child').textContent;
-		document.location = "shortPatientForm.form?fhirPatientId=" + id;
+        document.location = "shortPatientForm.form?fhirPatientId=" + id;
 
-    	}
+    }
 
-		function handleSaveResults(result) {
-					// This method will be called by DWR with the search results
-					// Do something with the search results here, such as displaying them on the page
-					if (result.hasOwnProperty("success")){
-						document.location = "admin/patients/shortPatientForm.form?fhirPatientId=" + result["success"];
+    function handleSaveResults(result) {
+        // This method will be called by DWR with the search results
+        // Do something with the search results here, such as displaying them on the page
+        if (result.hasOwnProperty("success")) {
+            document.location = "admin/patients/shortPatientForm.form?fhirPatientId=" + result["success"];
 
-					} else {
-						alert("Error: " + result["error"]);
+        } else {
+            alert("Error: " + result["error"]);
 
-					}
-		}
+        }
+    }
+}else if (content2.trim() !== ''){
+	$j('<div>').dialog({
+        title: '<openmrs:message code="Patient.merge.title"/>',
+        autoOpen: true, // Automatically open the dialog when the page loads
+        draggable: false,
+        resizable: false,
+        width: '95%',
+        dialogClass: 'custom-dialog', // Define a custom CSS class
+        modal: true,
+        buttons: {
+            "Continue": function() {
+                $j(this).dialog("close");
+                $j('#continueFlag').val('continue');
+                //$j('input[name="continueFlag"]').val('yourDynamicValue');
+
+                $j('#addButton').click();
+
+
+            },
+            "Cancel": function() {
+                $j(this).dialog("close");
+            }
+        },
+        open: function() {
+            // var tableHtml = createTable(jsonObject); // Create the table
+            //$j(this).html(tableHtml); // Set the table as the dialog content
+            //document.getElementById('extraData1').textContent;
+            var content = document.getElementById('extraData2').textContent;
+             $j(this).html(content);
+            
+        }
+    });
 };
-
 </script>
-
 <%@ include file="/WEB-INF/view/module/legacyui/template/footer.jsp" %>

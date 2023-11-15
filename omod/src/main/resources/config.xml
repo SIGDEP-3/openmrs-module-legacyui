@@ -396,6 +396,14 @@
 	</globalProperty>
 
 	<globalProperty>
+		<property>legacyui.enableMatchCheck</property>
+		<defaultValue>true</defaultValue>
+		<description>
+			Allow OpenCR match check before patient creation
+		</description>
+	</globalProperty>
+
+	<globalProperty>
 		<property>opencrLoginUrl</property>
 		<defaultValue>https://3000-sigdep3-sidep3dockerset-n7ifosdcxmb.ws-eu105.gitpod.io/ocrux/user/authenticate?username=root@intrahealth.org&amp;password=intrahealth</defaultValue>
 		<description>
