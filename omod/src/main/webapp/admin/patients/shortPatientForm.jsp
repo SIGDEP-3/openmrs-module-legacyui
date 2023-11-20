@@ -810,7 +810,7 @@ if (content.trim() !== '') {
                 tableHtml += '<td>' + data[i].gender + '</td>';
                 tableHtml += '<td>' + data[i].phone + '</td>';
 
-                // Separate columns for extensions and identifiers
+                // Separate columns for extensions
                 tableHtml += '<td>';
                 for (var extensionKey in data[i]) {
                     if (extensionKey.startsWith('extension_')) {
@@ -819,6 +819,7 @@ if (content.trim() !== '') {
                 }
                 tableHtml += '</td>';
 
+                // Separate columns for identifiers
                 tableHtml += '<td>';
                 for (var identifierKey in data[i]) {
                     if (identifierKey.startsWith('identifier_')) {
@@ -826,7 +827,16 @@ if (content.trim() !== '') {
                     }
                 }
                 tableHtml += '</td>';
-                tableHtml += '<td>' + (data[i].status || '') + '</td>';
+
+                tableHtml += '<td>';
+				for (var extensionKey in data[i]) {
+                    if (extensionKey.startsWith('extension_patient_status')) {
+                        tableHtml += data[i][extensionKey];
+                    }
+                }
+                tableHtml += '</td>';
+
+
                 if(category !== 'New Patient'){
                     tableHtml += '<td><button class="importButton" onclick="importData(this)">Import</button></td>';
                 }else{
