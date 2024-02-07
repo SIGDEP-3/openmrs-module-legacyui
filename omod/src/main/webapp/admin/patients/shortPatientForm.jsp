@@ -346,10 +346,6 @@
     padding: 8px;
 }
 
-.custom-table th {
-    background-color: #f2f2f2;
-}
-
 .custom-dialog {
     top: 10px !important; 
 }
@@ -781,25 +777,21 @@ if (content.trim() !== '') {
             } catch (error) {
                 console.error('Error parsing JSON:', error);
             }
-            createTable(jsonObject.parent, 'New Patient');
-            createTable(jsonObject.auto, 'Auto Matches');
-            createTable(jsonObject.potential, 'Potential Matches');
-            createTable(jsonObject.conflict, 'Conflict Matches');
+            createTable(jsonObject.parent, 'Nouveau Patient', '#7C7AD2');
+            createTable(jsonObject.auto, 'Correspondances Auto.','#33CCCC');
+            createTable(jsonObject.potential, 'Correspondances potentielles', '#FFD966');
+            createTable(jsonObject.conflict, 'Conflits de correspondance','#FF8C66');
 
         }
     });
 
-
-
-
-    function createTable(data, category) {
+    function createTable(data, category, color) {
         var tableHtml = '<table class="custom-table">';
-        tableHtml += '<thead><tr><th>ID</th><th>Given</th><th>Family</th><th>Birth Date</th><th>Gender</th><th>Phone</th><th>Extensions</th><th>Identifiers</th><th>Status</th><th>Action</th></tr></thead>';
-
+        tableHtml += '<thead><tr style="background-color: ' + color + ';"><th>ID</th><th>Prenom(s)</th><th>Nom de famille</th><th>Date de naissance</th><th>Genre</th><th>Telephone</th><th>Extensions</th><th>code ARV</th><th>Status</th><th>Action</th></tr></thead>';
         tableHtml += '<tbody>';
 
         if (data.length === 0) {
-            tableHtml += '<tr><td colspan="10">No patients available</td></tr>';
+            tableHtml += '<tr><td colspan="10">Aucun patient disponible</td></tr>';
         } else {
             for (var i = 0; i < data.length; i++) {
                 tableHtml += '<tr>';
