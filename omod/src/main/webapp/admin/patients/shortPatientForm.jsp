@@ -749,6 +749,9 @@ if (content.trim() !== '') {
         dialogClass: 'custom-dialog', // Define a custom CSS class
         modal: true,
         buttons: {
+			"Cancel": function() {
+                $j(this).dialog("close");
+            },
             "Continue": function() {
                 $j(this).dialog("close");
                 $j('#continueFlag').val('continue');
@@ -757,10 +760,8 @@ if (content.trim() !== '') {
                 $j('#addButton').click();
 
 
-            },
-            "Cancel": function() {
-                $j(this).dialog("close");
             }
+            
         },
         open: function() {
             // var tableHtml = createTable(jsonObject); // Create the table
@@ -829,10 +830,10 @@ if (content.trim() !== '') {
                 tableHtml += '</td>';
 
 
-                if(category !== 'New Patient'){
+                if(category !== 'Nouveau Patient'){
                     tableHtml += '<td><button class="importButton" onclick="importData(this)">Import</button></td>';
                 }else{
-                    tableHtml += '<td></td>';
+                    tableHtml += '<td><button class="importButton" onclick="ContinueCreate(this)">Continue</button></td>';
                 }
                 tableHtml += '</tr>';
             }
@@ -855,6 +856,10 @@ if (content.trim() !== '') {
 
     }
 
+	function ContinueCreate(button) {
+		$j('.custom-dialog').find('button:contains("Continue")').click();
+    }
+
     function handleSaveResults(result) {
         // This method will be called by DWR with the search results
         // Do something with the search results here, such as displaying them on the page
@@ -866,6 +871,8 @@ if (content.trim() !== '') {
 
         }
     }
+	$j('.custom-dialog').parent().find('button:contains("Continue")').hide();
+
 }else if (content2.trim() !== ''){
 	$j('<div>').dialog({
         title: '<openmrs:message code="Patient.merge.title"/>',
