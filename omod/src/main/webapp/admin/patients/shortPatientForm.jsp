@@ -297,24 +297,6 @@
 			$j('#'+location + '_NA').show();
 		}
 	}
-
-	// Function to make a GET request to an endpoint
-	function fetchData() {
-            // Replace 'your-api-endpoint' with your actual endpoint URL
-            fetch('http://ip.jsontest.com')
-                .then(response => response.json())
-                .then(data => {
-                    // Display the fetched data in a popup (modal dialog)
-                    alert('Fetched Data: ' + JSON.stringify(data));
-
-                    // Once the user clicks "OK," continue with the form submission
-                    document.getElementById('myForm').submit();
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                    // Handle any errors here
-                });
-    }
 </script>
 
 <style>
@@ -333,22 +315,22 @@
 		border-bottom: 1px lightgray solid;
 	}
 
-		/* Define a specific class for the table */
-.custom-table {
-    border-collapse: collapse;
-    width: 100%;
-    margin-top: 20px;
-}
+			/* Define a specific class for the table */
+	.custom-table {
+		border-collapse: collapse;
+		width: 100%;
+		margin-top: 20px;
+	}
 
-.custom-table th, .custom-table td {
-    border: 1px solid #dddddd;
-    text-align: left;
-    padding: 8px;
-}
+	.custom-table th, .custom-table td {
+		border: 1px solid #dddddd;
+		text-align: left;
+		padding: 8px;
+	}
 
-.custom-dialog {
-    top: 10px !important; 
-}
+	.custom-dialog {
+		top: 10px !important; 
+	}
 </style>
 
 <openmrs:globalProperty key="use_patient_attribute.mothersName" defaultValue="false" var="showMothersName"/>
@@ -833,7 +815,7 @@ if (content.trim() !== '') {
                 if(category !== 'Nouveau Patient'){
                     tableHtml += '<td><button class="importButton" onclick="importData(this)">Import</button></td>';
                 }else{
-                    tableHtml += '<td><button class="importButton" onclick="ContinueCreate(this)">Continue</button></td>';
+                    tableHtml += '<td><button class="importButton" onclick="ContinueCreate(this)">Create</button></td>';
                 }
                 tableHtml += '</tr>';
             }

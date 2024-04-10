@@ -77,9 +77,12 @@ import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.RequestBody;
 import okhttp3.Response;
+import okhttp3.Credentials;
 
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.concurrent.TimeUnit;
+import java.util.UUID;
 
 /**
  * This controller is used for the "mini"/"new"/"short" patient form. Only key/important attributes
@@ -244,15 +247,15 @@ public class ShortPatientFormController {
 			@RequestParam(value = "continueFlag", required = false) String continueFlag,
 			@ModelAttribute("patientModel") ShortPatientModel patientModel, BindingResult result, Model model) {
 
-		OkHttpClient client = new OkHttpClient();
-		// URL to send the GET request to
-		String url = Context.getAdministrationService().getGlobalProperty("opencrLoginUrl",
-				"http://localhost:3000/ocrux/user/authenticate?username=root@intrahealth.org&password=intrahealth");
-		String requestBody = Context.getAdministrationService().getGlobalProperty("opencrLoginJsonBody",
-				"{ \"username\": \"root@intrahealth.org\", \"password\": \"intrahealth\"}");
+			String opencrClientTimeOut = Context.getAdministrationService().getGlobalProperty(
+					"opencr.opencrClientTimeOut",
+					"30");
+		OkHttpClient client = new OkHttpClient.Builder()
+                .callTimeout(Integer.parseInt(opencrClientTimeOut), TimeUnit.SECONDS) // Set timeout for complete call (including connection, read, and write operations) to 30 seconds
+                .build();
 
 		String opencrMatchesUrl = Context.getAdministrationService().getGlobalProperty("opencrMatchesUrl",
-				"http://localhost:3000/ocrux/user/authenticate?username=root@intrahealth.org&password=intrahealth");
+				"https://localhost:5001/CR/fhir/matches");
 
 		String opencrMatchesCheckFlag = Context.getAdministrationService().getGlobalProperty(
 				"legacyui.enableMatchCheck",
@@ -260,12 +263,6 @@ public class ShortPatientFormController {
 
 		String token = null;
 		String opencMatches = null;
-
-		// Create a request
-		Request request2 = new Request.Builder()
-				.url(url)
-				.post(RequestBody.create(MediaType.parse("application/json"), requestBody))
-				.build();
 
 		// Add the data to the Model
 		if (!Context.isAuthenticated()) {
@@ -298,9 +295,6 @@ public class ShortPatientFormController {
 
 				return "module/legacyui/admin/patients/shortPatientForm";
 			}
-
-			// check if name/address were edited, void them and replace them
-			boolean foundChanges = hasPersonNameOrAddressChanged(patient, personNameCache, personAddressCache);
 
 			ContactPoint contactPoint = new ContactPoint();
 
@@ -337,25 +331,17 @@ public class ShortPatientFormController {
 
 					// Now, jsonPayload contains the JSON representation of the Patient
 					System.out.println("JSON Payload:\n" + jsonPayload);
-
-					// Execute the request
-					try (Response response = client.newCall(request2).execute()) {
-						// Check if the request was successful (HTTP status code 201 for successful
-						// creation)
-						if (response.isSuccessful()) {
-							// Print the response body
-							String responseBody1 = response.body().string();
-
-							// String responseBody = response.body().string();
-							// Parse the JSON response to get the token
-							token = parseToken(responseBody1);
+					
+							// Create basic authentication credentials
+							String username = "sigdep3";
+							String password = "sigdep3";
+							String credentials = Credentials.basic(username, password);
 
 							Request apiRequest = new Request.Builder()
 									.url(opencrMatchesUrl)
 									.post(RequestBody.create(MediaType.parse("application/json"), jsonPayload))
-									.header("Authorization", "Bearer " + token)
+									.header("Authorization", credentials) // Add Authorization header
 									.build();
-
 							try (Response apiResponse = client.newCall(apiRequest).execute()) {
 								if (apiResponse.isSuccessful()) {
 									opencMatches = apiResponse.body().string();
@@ -374,23 +360,6 @@ public class ShortPatientFormController {
 								return "module/legacyui/admin/patients/shortPatientForm";
 
 							}
-
-						} else {
-							System.out.println("Error: " + response.code() + " - " + response.message());
-							model.addAttribute("queryError", "Communication with OpenCR server is unsuccessful");
-
-							return "module/legacyui/admin/patients/shortPatientForm";
-						}
-					} catch (IOException e) {
-						
-						model.addAttribute("queryError", "Authentication with OpenCR failed");
-						
-						e.printStackTrace();
-						return "module/legacyui/admin/patients/shortPatientForm";
-
-					}
-					// Further processing with myXml
-					// ...
 				} else {
 					// Handle the case where conversion to FHIR resource failed
 					System.out.println("Error: Conversion to FHIR resource failed");
@@ -402,6 +371,9 @@ public class ShortPatientFormController {
 				}
 
 			}
+			
+			// check if name/address were edited, void them and replace them
+			boolean foundChanges = hasPersonNameOrAddressChanged(patient, personNameCache, personAddressCache);
 
 			try {
 				patient = Context.getPatientService().savePatient(patient);
@@ -893,9 +865,9 @@ public class ShortPatientFormController {
 			telecom = fhirPatient.getTelecomFirstRep().getValue();
 		}
 
-		// Add null checker for attribute CRUID
+		String phoneUUID = Context.getAdministrationService().getGlobalProperty("fhir2.personContactPointAttributeTypeUuid");
 		PersonAttributeType type = Context.getPersonService()
-				.getPersonAttributeTypeByUuid("2b4fbe39-3281-42fa-b45b-e5cfee7bf1db");
+				.getPersonAttributeTypeByUuid(phoneUUID);
 		PersonAttribute attribute = new PersonAttribute(type, telecom);
 		p.addAttribute(attribute);
 
@@ -954,8 +926,7 @@ public class ShortPatientFormController {
 		p.setBirthdate(fhirPatient.getBirthDate());
 		// Get the identifiers of the patient
 		List<org.hl7.fhir.r4.model.Identifier> identifiers = fhirPatient.getIdentifier();
-		String fhirIdsExp = "http://clientregistry.org/artnumber|6b6e9d94-015b-48f6-ac95-da239512ff91, http://clientregistry.org/openmrs|3825d4f8-1afd-4da4-b30f-e0ff4cd256a5";
-		String fhirIds = Context.getAdministrationService().getGlobalProperty("fhirIds", fhirIdsExp);
+		String fhirIds = Context.getAdministrationService().getGlobalProperty("opencrIdsMapping");
 		Map<String, String> optionsMap = new HashMap<>();
 		String[] options = fhirIds.split(",");
 
@@ -971,7 +942,7 @@ public class ShortPatientFormController {
 		}
 		for (org.hl7.fhir.r4.model.Identifier fhirIdentifier : identifiers) {
 
-			if (fhirIdentifier.getSystem() != null && optionsMap.get(fhirIdentifier.getSystem()) != null) {
+			if (fhirIdentifier.getSystem() != null && fhirIdentifier.getValue() != null && optionsMap.get(fhirIdentifier.getSystem()) != null) {
 
 				PatientIdentifier pi = new PatientIdentifier();
 				pi.setIdentifier(fhirIdentifier.getValue());
