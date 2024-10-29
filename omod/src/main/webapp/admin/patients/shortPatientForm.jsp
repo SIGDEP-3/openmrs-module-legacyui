@@ -342,6 +342,8 @@
 <span id="importedPatientID" style="display: none;">${importedPatientID}</span>
 <span id="extraData1" style="display: none;">${opencMatches}</span>
 <span id="extraData2" style="display: none;">${queryError}</span>
+<span id="defaultLocation" style="display: none;">${defaultLocation}</span>
+
 
 <form:form method="post" action="shortPatientForm.form" onsubmit="removeHiddenRows()" modelAttribute="patientModel">
 	<c:if test="${patientModel.patient.patientId == null}"><h2><openmrs:message code="Patient.create"/></h2></c:if>
@@ -721,6 +723,8 @@ toggleLocationBoxAndIndentifierTypeWarning(idTi,'initialLocationBox0',0);
 //	window.onload = function() {
 var content = document.getElementById('extraData1').textContent;
 var content2 = document.getElementById('extraData2').textContent;
+var defaultLocation = document.getElementById('defaultLocation').textContent;
+
 var isAutoTransferred = false;
 var autoTransferExist = false;
 if (content.trim() !== '') {
@@ -735,7 +739,7 @@ if (content.trim() !== '') {
         dialogClass: 'custom-dialog', // Define a custom CSS class
         modal: true,
         buttons: {
-			"Cancel": function() {
+			"Annuler": function() {
                 $j(this).dialog("close");
             },
             "Continue": function() {
@@ -778,7 +782,6 @@ if (content.trim() !== '') {
             createTable(jsonObject.parent, 'Nouveau Patient:', '#7C7AD2');
             createTable(jsonObject.auto, 'Correspondances parfaites:','#33CCCC');
             createTable(jsonObject.potential, 'Correspondances potentielles:', '#FFD966');
-            createTable(jsonObject.conflict, 'Conflits de correspondance:','#FF8C66');
 
 			if (fhirPatientParam !== null) {
 				$j('.createButton').show().css('display', 'block');
@@ -808,6 +811,7 @@ if (content.trim() !== '') {
         var tableHtml = '<table class="custom-table">';
         tableHtml += '<thead><tr style="background-color: ' + color + ';"><th style="display: none;">ID</th><th>Nom de famille</th><th>Prenom(s)</th><th>Date de naissance</th><th>Sexe</th><th>Telephone</th><th>code d&apos;	identification</th><th>Status</th><th>Site</th><th>Action</th></tr></thead>';
         tableHtml += '<tbody>';
+		var isNewPatient = category == 'Nouveau Patient:' ;
 
         if (data.length === 0) {
             tableHtml += '<tr><td colspan="10">Aucun patient disponible</td></tr>';
@@ -844,13 +848,13 @@ if (content.trim() !== '') {
                     }
                 }
                 tableHtml += '</td>';
-				tableHtml += '<td>' + data[i].source + '</td>';
+				tableHtml += '<td>' + (isNewPatient ? defaultLocation :  data[i].source) + '</td>';
 
                 if(category == 'Correspondances parfaites:' && isAutoTransferred){
 					autoTransferExist = true;
-                    tableHtml += '<td><button class="importButton" onclick="importData(this)">Import</button></td>';
-                }else if(category == 'Nouveau Patient:'){
-                    tableHtml += '<td><button class="createButton" onclick="ContinueCreate(this)">Create</button></td>';
+                    tableHtml += '<td><button class="importButton" onclick="importData(this)">Importer</button></td>';
+                }else if(isNewPatient){
+                    tableHtml += '<td><button class="createButton" onclick="ContinueCreate(this)">Créer</button></td>';
                 }else if(category == 'Correspondances potentielles:'){
 					tableHtml += '<td><input type="checkbox" class="createCheckbox"></td>';
                 }else{
