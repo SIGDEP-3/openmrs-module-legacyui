@@ -9,15 +9,21 @@
  */
 package org.openmrs.web.controller.patient;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-
+import java.util.stream.Collectors;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import ca.uhn.fhir.parser.IParser;
+import org.hl7.fhir.r4.model.ContactPoint;
+import org.hl7.fhir.r4.model.Reference;
+import org.hl7.fhir.r4.model.HumanName;
 import org.openmrs.Concept;
 import org.openmrs.Location;
 import org.openmrs.Obs;
@@ -28,19 +34,25 @@ import org.openmrs.PatientIdentifierType.LocationBehavior;
 import org.openmrs.Person;
 import org.openmrs.PersonAddress;
 import org.openmrs.PersonAttribute;
+import org.openmrs.PersonAttributeType;
 import org.openmrs.PersonName;
 import org.openmrs.Relationship;
 import org.openmrs.RelationshipType;
+import org.openmrs.User;
 import org.openmrs.api.APIException;
 import org.openmrs.api.context.Context;
+import org.openmrs.module.fhir2.api.translators.PatientTranslator;
+import org.openmrs.util.HttpClient;
 import org.openmrs.util.LocationUtility;
 import org.openmrs.util.OpenmrsConstants;
 import org.openmrs.util.OpenmrsUtil;
+import org.openmrs.validator.PatientIdentifierValidator;
 import org.openmrs.validator.PatientValidator;
 import org.openmrs.web.WebConstants;
 import org.openmrs.web.controller.person.PersonFormController;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Controller;
+import org.springframework.ui.Model;
 import org.springframework.ui.ModelMap;
 import org.springframework.validation.BindException;
 import org.springframework.validation.BindingResult;
@@ -51,6 +63,18 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.context.request.WebRequest;
+import ca.uhn.fhir.context.FhirContext;
+import ca.uhn.fhir.rest.client.api.IGenericClient;
+import okhttp3.MediaType;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.RequestBody;
+import okhttp3.Response;
+import okhttp3.Credentials;
+
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.concurrent.TimeUnit;
 
 /**
  * This controller is used for the "mini"/"new"/"short" patient form. Only key/important attributes
@@ -73,19 +97,28 @@ public class ShortPatientFormController {
 	@Autowired
 	PatientValidator patientValidator;
 	
+	@Autowired
+	PatientTranslator patientTranslator;
+	
+	@Autowired
+	HttpClient httpClient;
+	
 	@RequestMapping(method = RequestMethod.GET, value = SHORT_PATIENT_FORM_URL)
 	public void showForm() {
 	}
 	
 	@ModelAttribute("patientModel")
 	public ShortPatientModel getPatientModel(@RequestParam(value = "patientId", required = false) Integer patientId,
-	        ModelMap model, WebRequest request) {
+	        @RequestParam(value = "fhirPatientId", required = false) String fhirPatientId, ModelMap model, WebRequest request)
+	        throws Exception {
 		Patient patient;
 		if (patientId != null) {
 			patient = Context.getPatientService().getPatientOrPromotePerson(patientId);
 			if (patient == null) {
 				throw new IllegalArgumentException("No patient or person with the given id");
 			}
+		} else if (fhirPatientId != null) {
+			patient = createPatient(fhirPatientId);
 		} else {
 			// we may have some details to add to a blank patient
 			patient = new Patient();
@@ -201,10 +234,35 @@ public class ShortPatientFormController {
 	 */
 	@RequestMapping(method = RequestMethod.POST, value = SHORT_PATIENT_FORM_URL)
 	public String saveShortPatient(WebRequest request, @ModelAttribute("personNameCache") PersonName personNameCache,
-	        @ModelAttribute("personAddressCache") PersonAddress personAddressCache,
-	        @ModelAttribute("relationshipsMap") Map<String, Relationship> relationshipsMap,
-	        @ModelAttribute("patientModel") ShortPatientModel patientModel, BindingResult result) {
-		
+			@ModelAttribute("personAddressCache") PersonAddress personAddressCache,
+			@ModelAttribute("relationshipsMap") Map<String, Relationship> relationshipsMap,
+			@RequestParam(value = "continueFlag", required = false) String continueFlag,
+			@RequestParam(value = "importedPatientId", required = false) String importedPatientId,
+			@ModelAttribute("patientModel") ShortPatientModel patientModel, BindingResult result, Model model) {
+
+			String opencrClientTimeOut = Context.getAdministrationService().getGlobalProperty(
+					"opencr.opencrClientTimeOut",
+					"30");
+		OkHttpClient client = new OkHttpClient.Builder()
+                .callTimeout(Integer.parseInt(opencrClientTimeOut), TimeUnit.SECONDS) // Set timeout for complete call (including connection, read, and write operations) to 30 seconds
+                .build();
+
+		String opencrMatchesUrl = Context.getAdministrationService().getGlobalProperty("opencrMatchesUrl",
+				"https://localhost:5001/CR/fhir/matches");
+
+		String opencrMatchesCheckFlag = Context.getAdministrationService().getGlobalProperty(
+				"legacyui.enableMatchCheck",
+				"true");
+
+		String opencMatches = null;
+
+		// Add the data to the Model
+		if (!Context.isAuthenticated()) {
+			// return "module/legacyui/template/popupMessage";
+			return "module/legacyui/admin/patients/shortPatientForm";
+
+		}
+
 		if (Context.isAuthenticated()) {
 			// First do form validation so that we can easily bind errors to
 			// fields
@@ -212,7 +270,7 @@ public class ShortPatientFormController {
 			if (result.hasErrors()) {
 				return "module/legacyui/admin/patients/shortPatientForm";
 			}
-			
+
 			Patient patient = null;
 			patient = getPatientFromFormData(patientModel);
 			
@@ -226,23 +284,139 @@ public class ShortPatientFormController {
 				for (ObjectError error : patientErrors.getAllErrors()) {
 					result.reject(error.getCode(), error.getArguments(), "Validation errors found");
 				}
-				
+
 				return "module/legacyui/admin/patients/shortPatientForm";
 			}
+
+			ContactPoint contactPoint = new ContactPoint();
+
+			for (PersonAttribute iterable_element : patient.getActiveAttributes()) {
+				if (iterable_element.getAttributeType().getUuid().equals(Context.getAdministrationService()
+						.getGlobalProperty("fhir2.personContactPointAttributeTypeUuid"))){
+					contactPoint.setId(iterable_element.getUuid());
+				contactPoint.setValue(iterable_element.getValue());
+				contactPoint.setUse(ContactPoint.ContactPointUse.MOBILE);
+				contactPoint.setSystem(ContactPoint.ContactPointSystem.PHONE);
+}
+			}
+
+			if (opencrMatchesCheckFlag.equals("true")) {
+				List<ContactPoint> myList = new ArrayList<>();
+				myList.add(contactPoint);
+				Context.clearSession();
+				org.hl7.fhir.r4.model.Patient fhirResource = patientTranslator.toFhirResource(patient);
+
+				fhirResource.setTelecom(myList);
+
+				// Check if the conversion was successful
+				if (fhirResource != null) {
+					// Now you can safely use the result
+					fhirResource.getName().get(0).setUse(HumanName.NameUse.OFFICIAL);
+					HumanName name = fhirResource.getName().get(0);
+					if (name.hasGiven() && !name.getGiven().isEmpty()) {
+						// Trim the first given name
+						String firstGivenName = name.getGiven().get(0).getValue();
+						name.getGiven().get(0).setValue(firstGivenName.trim());
+					}
 			
+					// Create a FhirContext
+					FhirContext fhirContext = FhirContext.forR4();
+
+					// Create a JSON parser
+					IParser jsonParser = fhirContext.newJsonParser();
+
+					// Serialize the Patient resource to JSON
+					String jsonPayload = jsonParser.encodeResourceToString(fhirResource);
+
+					// Now, jsonPayload contains the JSON representation of the Patient
+					System.out.println("JSON Payload:\n" + jsonPayload);
+					
+							// Create basic authentication credentials
+							String username = Context.getAdministrationService().getGlobalProperty("clientregistry.username");
+							String password = Context.getAdministrationService().getGlobalProperty("clientregistry.password");
+							String credentials = Credentials.basic(username, password);
+
+							Request apiRequest = new Request.Builder()
+									.url(opencrMatchesUrl)
+									.post(RequestBody.create(MediaType.parse("application/json"), jsonPayload))
+									.header("Authorization", credentials) // Add Authorization header
+									.build();
+							try (Response apiResponse = client.newCall(apiRequest).execute()) {
+								if (apiResponse.isSuccessful()) {
+									opencMatches = apiResponse.body().string();
+									model.addAttribute("opencMatches", opencMatches);
+									if (importedPatientId != null && !importedPatientId.isEmpty()) {
+										model.addAttribute("importedPatientID", importedPatientId);
+									}
+								} else {
+									model.addAttribute("queryError", "OpenCR patient match issue");
+
+									System.out.println("Error: " + apiResponse.code() + " - " + apiResponse.message());
+									return "module/legacyui/admin/patients/shortPatientForm";
+
+								}
+							} catch (IOException e) {
+								model.addAttribute("queryError", "OpenCR server error");
+
+								e.printStackTrace();
+								return "module/legacyui/admin/patients/shortPatientForm";
+
+							}
+				} else {
+					// Handle the case where conversion to FHIR resource failed
+					System.out.println("Error: Conversion to FHIR resource failed");
+				}
+
+				if (!continueFlag.equals("continue")) {
+					// return "module/legacyui/template/popupMessage";
+					return "module/legacyui/admin/patients/shortPatientForm";
+				}
+
+			}
+
 			// check if name/address were edited, void them and replace them
 			boolean foundChanges = hasPersonNameOrAddressChanged(patient, personNameCache, personAddressCache);
-			
+
 			try {
 				patient = Context.getPatientService().savePatient(patient);
+				if (importedPatientId != null && !importedPatientId.isEmpty()) {
+					IGenericClient fhirClient = Context.getRegisteredComponent("clientRegistryFhirClient", IGenericClient.class);
+					org.hl7.fhir.r4.model.Patient fhirPatient = fhirClient.read()
+							.resource(org.hl7.fhir.r4.model.Patient.class).withId(importedPatientId).execute();
+							String extensionUrl = "imported";
+					String extensionValue = "yes";
+					// Check if the extension already exists
+					boolean extensionExists = false;
+					for (org.hl7.fhir.r4.model.Extension ext : fhirPatient.getExtension()) {
+						if (extensionUrl.equals(ext.getUrl())) {
+							// Update the existing extension value
+							ext.setValue(new org.hl7.fhir.r4.model.StringType(extensionValue));
+							extensionExists = true;
+							break;
+						}
+					}
+
+					// Add the extension if it doesn’t exist
+					if (!extensionExists) {
+						org.hl7.fhir.r4.model.Extension newExtension = new org.hl7.fhir.r4.model.Extension();
+						newExtension.setUrl(extensionUrl);
+						newExtension.setValue(new org.hl7.fhir.r4.model.StringType(extensionValue));
+						fhirPatient.addExtension(newExtension);
+					}
+
+					// Update the patient resource
+					fhirClient.update()
+						.resource(fhirPatient)
+						.execute();
+				}
 				request.setAttribute(WebConstants.OPENMRS_MSG_ATTR,
 				    Context.getMessageSourceService().getMessage("Patient.saved"), WebRequest.SCOPE_SESSION);
-				
+
 				// TODO do we really still need this, besides ensuring that the
 				// cause of death is provided?
 				// process and save the death info
 				saveDeathInfo(patientModel, request);
-				
+
 				if (!patient.getVoided() && relationshipsMap != null) {
 					for (Relationship relationship : relationshipsMap.values()) {
 						// if the user added a person to this relationship, save
@@ -252,13 +426,12 @@ public class ShortPatientFormController {
 						}
 					}
 				}
-			}
-			catch (APIException e) {
+			} catch (APIException e) {
 				log.error("Error occurred while attempting to save patient", e);
 				request.setAttribute(WebConstants.OPENMRS_ERROR_ATTR,
 				    Context.getMessageSourceService().getMessage("Patient.save.error"), WebRequest.SCOPE_SESSION);
 				// TODO revert the changes and send them back to the form
-				
+
 				// don't send the user back to the form because the created
 				// person name/addresses
 				// will be recreated over again if the user attempts to resubmit
@@ -266,12 +439,20 @@ public class ShortPatientFormController {
 					return "module/legacyui/admin/patients/shortPatientForm";
 				}
 			}
-			
+
 			return "redirect:" + PATIENT_DASHBOARD_URL + "?patientId=" + patient.getPatientId();
-			
+
 		}
-		
+
 		return "module/legacyui/findPatient";
+	}
+	
+	private static String parseToken(String responseBody) {
+		// Implement your JSON parsing logic here to extract the token from the response
+		// For simplicity, assuming the token is always present in the 'token' field
+		// Replace this with your actual JSON parsing logic
+		// You might want to use a JSON library for this task
+		return responseBody.split("\"token\":")[1].split(",")[0].replaceAll("\"", "");
 	}
 	
 	/**
@@ -321,19 +502,22 @@ public class ShortPatientFormController {
 		// add the person attributes
 		if (patientModel.getPersonAttributes() != null) {
 			for (PersonAttribute formAttribute : patientModel.getPersonAttributes()) {
-				//skip past new attributes with no values, because the user left them blank
+				// skip past new attributes with no values, because the user left them blank
 				if (formAttribute.getPersonAttributeId() == null && StringUtils.isBlank(formAttribute.getValue())) {
 					continue;
 				}
 				
-				//if the value has been changed for an existing attribute, void it and create a new one
+				// if the value has been changed for an existing attribute, void it and create a
+				// new one
 				if (formAttribute.getPersonAttributeId() != null
 				        && !OpenmrsUtil.nullSafeEquals(formAttribute.getValue(),
 				            patient.getAttribute(formAttribute.getAttributeType()).getValue())) {
-					//As per the logic in Person.addAttribute, the old edited attribute will get voided 
-					//as this new one is getting added 
+					// As per the logic in Person.addAttribute, the old edited attribute will get
+					// voided
+					// as this new one is getting added
 					formAttribute = new PersonAttribute(formAttribute.getAttributeType(), formAttribute.getValue());
-					//AOP is failing to set these in unit tests, just set them here for the tests to pass
+					// AOP is failing to set these in unit tests, just set them here for the tests
+					// to pass
 					formAttribute.setDateCreated(new Date());
 					formAttribute.setCreator(Context.getAuthenticatedUser());
 				}
@@ -669,5 +853,172 @@ public class ShortPatientFormController {
 		}
 		
 		return StringUtils.join(tempName, " ");
+	}
+	
+	public static String extractUUID(String url) {
+		// Regular expression pattern for UUID
+		Pattern pattern = Pattern.compile(".*/([a-fA-F0-9\\-]+)$");
+		Matcher matcher = pattern.matcher(url);
+		
+		if (matcher.find()) {
+			return matcher.group(1);
+		} else {
+			// UUID not found
+			return null;
+		}
+	}
+	
+	public Patient createPatient(String CRIdentifier) throws Exception {
+
+		// Get patient
+		// IGenericClient client = new FhirLegacyUIConfig().getFhirClient();
+		IGenericClient client = Context.getRegisteredComponent("clientRegistryFhirClient", IGenericClient.class);
+
+		// Patient patient = client.read()
+		org.hl7.fhir.r4.model.Patient fhirPatient = client.read()
+
+				.resource(org.hl7.fhir.r4.model.Patient.class).withId(CRIdentifier).execute();
+
+		User user = Context.getAuthenticatedUser();
+		Patient p = new Patient();
+		p.setPersonCreator(user);
+		p.setPersonDateCreated(new Date());
+		p.setPersonChangedBy(user);
+		p.setPersonDateChanged(new Date());
+		p.setUuid(CRIdentifier);
+
+		List<Reference> links = fhirPatient.getLink()
+				.stream()
+				.map(patientLink -> patientLink.getOther())
+				.collect(Collectors.toList());
+		String telecom = "";
+
+		if (fhirPatient.getTelecomFirstRep() != null && fhirPatient.getTelecomFirstRep().getValue() != null) {
+			telecom = fhirPatient.getTelecomFirstRep().getValue();
+		}
+
+		String phoneUUID = Context.getAdministrationService().getGlobalProperty("fhir2.personContactPointAttributeTypeUuid");
+		PersonAttributeType type = Context.getPersonService()
+				.getPersonAttributeTypeByUuid(phoneUUID);
+		PersonAttribute attribute = new PersonAttribute(type, telecom);
+		p.addAttribute(attribute);
+
+		// Set patient name
+		PersonName name = new PersonName();
+		List<org.hl7.fhir.r4.model.StringType> givenNames = fhirPatient.getNameFirstRep().getGiven();
+		if (!givenNames.isEmpty()) {
+
+			StringBuilder sb = new StringBuilder();
+			for (int i = 1; i < givenNames.size(); i++) {
+				sb.append(givenNames.get(i).getValue()).append(" ");
+			}
+
+			if (sb.length() > 0) {
+				sb.deleteCharAt(sb.length() - 1);
+			}
+
+			name = new PersonName(givenNames.get(0).getValue(), sb.toString(),
+					fhirPatient.getNameFirstRep().getFamily());
+
+		}
+
+		switch (fhirPatient.getBirthDateElement().getPrecision()) {
+			case DAY:
+				p.setBirthdateEstimated(false);
+				break;
+			case MONTH:
+			case YEAR:
+				p.setBirthdateEstimated(true);
+				break;
+		}
+
+		// Set patient gender
+		if (fhirPatient.hasGender()) {
+			switch (fhirPatient.getGender()) {
+				case MALE:
+					p.setGender("M");
+					break;
+				case FEMALE:
+					p.setGender("F");
+					break;
+				case OTHER:
+					p.setGender("O");
+					break;
+				case UNKNOWN:
+					p.setGender("U");
+					break;
+			}
+		}
+
+		name.setCreator(user);
+		name.setDateCreated(new Date());
+		name.setChangedBy(user);
+		name.setDateChanged(new Date());
+		p.addName(name);
+		p.setBirthdate(fhirPatient.getBirthDate());
+		// Get the identifiers of the patient
+		List<org.hl7.fhir.r4.model.Identifier> identifiers = fhirPatient.getIdentifier();
+		String fhirIds = Context.getAdministrationService().getGlobalProperty("opencrIdsMapping");
+		Map<String, String> optionsMap = new HashMap<>();
+		String[] options = fhirIds.split(",");
+
+		// String[] options = fhirIds.split("\\|");
+		for (String option : options) {
+			String[] keyValue = option.split("\\|");
+
+			if (keyValue.length == 2) {
+				String key = keyValue[0].trim();
+				String value = keyValue[1].trim();
+				optionsMap.put(key, value);
+			}
+		}
+		for (org.hl7.fhir.r4.model.Identifier fhirIdentifier : identifiers) {
+
+			if (fhirIdentifier.getSystem() != null && fhirIdentifier.getValue() != null && optionsMap.get(fhirIdentifier.getSystem()) != null) {
+
+				PatientIdentifier pi = new PatientIdentifier();
+				pi.setIdentifier(fhirIdentifier.getValue());
+
+				pi.setIdentifierType(Context.getPatientService().getPatientIdentifierTypeByUuid(
+						optionsMap.get(fhirIdentifier.getSystem())));
+
+				pi.setLocation(Context.getLocationService().getDefaultLocation());
+
+				switch (fhirIdentifier.getUse()) {
+					case OFFICIAL:
+						pi.setPreferred(true);
+						break;
+					default:
+						pi.setPreferred(false);
+						break;
+				}
+
+				BindException piErrors = new BindException(pi, "patientIdentifier");
+				new PatientIdentifierValidator().validate(pi, piErrors);
+				if (piErrors.hasErrors()) {
+					log.warn(piErrors.getMessage());
+
+				}
+				p.addIdentifier(pi);
+			}
+
+		}
+		/*
+		 * if(CRUID != null){
+		 * PatientIdentifier pi = new PatientIdentifier();
+		 * pi.setIdentifier(CRUID);
+		 * pi.setIdentifierType(Context.getPatientService().
+		 * getPatientIdentifierTypeByUuid("43a6e699-c2b8-4d5f-9e7f-cf19448d59b7"));
+		 * pi.setLocation(Context.getLocationService().getDefaultLocation());
+		 * pi.setPreferred(false);
+		 * 
+		 * p.addIdentifier(pi);
+		 * }
+		 */
+		// Patient patient = Context.getPatientService().savePatient(p);
+		// resultsMap.put("success", patient.getPatientId());
+
+		return p;
+
 	}
 }

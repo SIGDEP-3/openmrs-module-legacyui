@@ -1,3 +1,4 @@
+<%@page contentType="text/html; charset=UTF-8"%>
 <%@ include file="/WEB-INF/view/module/legacyui/template/include.jsp" %>
 
 <openmrs:require privilege="Add Patients" otherwise="/login.htm" redirect="/admin/patients/shortPatientForm.form" />
@@ -314,6 +315,23 @@
 	.lastCell {
 		border-bottom: 1px lightgray solid;
 	}
+
+			/* Define a specific class for the table */
+	.custom-table {
+		border-collapse: collapse;
+		width: 100%;
+		margin-top: 20px;
+	}
+
+	.custom-table th, .custom-table td {
+		border: 1px solid #dddddd;
+		text-align: left;
+		padding: 8px;
+	}
+
+	.custom-dialog {
+		top: 10px !important; 
+	}
 </style>
 
 <openmrs:globalProperty key="use_patient_attribute.mothersName" defaultValue="false" var="showMothersName"/>
@@ -321,6 +339,9 @@
 <spring:hasBindErrors name="patientModel">
     <openmrs_tag:errorNotify errors="${errors}" />
 </spring:hasBindErrors>
+<span id="importedPatientID" style="display: none;">${importedPatientID}</span>
+<span id="extraData1" style="display: none;">${opencMatches}</span>
+<span id="extraData2" style="display: none;">${queryError}</span>
 
 <form:form method="post" action="shortPatientForm.form" onsubmit="removeHiddenRows()" modelAttribute="patientModel">
 	<c:if test="${patientModel.patient.patientId == null}"><h2><openmrs:message code="Patient.create"/></h2></c:if>
@@ -681,11 +702,12 @@
 		</td>
 	</tr>
 	</table>
-	
+	<input type="hidden" id="continueFlag" name="continueFlag" >
 	<input type="hidden" name="patientId" value="<c:out value="${param.patientId}" />" />
-	
+	<input type="hidden" id="importedPatientId"  name="importedPatientId" value="<c:out value="${param.fhirPatientId}" />" />
 	<br />
 	<input type="submit" value="<openmrs:message code="general.save" />" name="action" id="addButton"> &nbsp; &nbsp; 
+
 	<input type="button" value="<openmrs:message code="general.back" />" onclick="history.go(-1);">	
 </form:form>
 
@@ -694,7 +716,219 @@
 	var idT = document.getElementById('identifiers0.identifierType');
 	var idTi = idT.options[idT.selectedIndex].value;
 	toggleLocationBoxAndIndentifierTypeWarning(idTi,'initialLocationBox0',0);
+	//	window.onload = function() {
+	var content = document.getElementById('extraData1').textContent;
+	var content2 = document.getElementById('extraData2').textContent;
+	var isAutoTransferred = false;
+	var autoTransferExist = false;
+if (content.trim() !== '') {
+    //alert('Fetched Data: ' + document.getElementById('extraData').textContent);
+    $j('<div>').dialog({
+        title: '<openmrs:message code="legacyui.patient.matchingResults"/>',
+        autoOpen: true, // Automatically open the dialog when the page loads
+        draggable: false,
+        resizable: false,
+        width: '95%',
+        dialogClass: 'custom-dialog', // Define a custom CSS class
+        modal: true,
+        buttons: {
+			"Cancel": function() {
+                $j(this).dialog("close");
+            },
+            "Continue": function() {
+                $j(this).dialog("close");
+                $j('#continueFlag').val('continue');
+				var importedPatientID = document.getElementById('importedPatientID').textContent;
+                $j('#importedPatientId').val(importedPatientID);
+                //$j('input[name="continueFlag"]').val('yourDynamicValue');
+                $j('#addButton').click();
 
+
+            }
+            
+        },
+        open: function() {
+            // var tableHtml = createTable(jsonObject); // Create the table
+            //$j(this).html(tableHtml); // Set the table as the dialog content
+            //document.getElementById('extraData1').textContent;
+            //var content = document.getElementById('extraData1').textContent;
+            // $j(this).html(content);
+			var searchParams = new URLSearchParams(window.location.search);
+			var previousUrl = document.referrer;
+			var urlParams = new URLSearchParams(new URL(previousUrl).search);
+
+			var fhirPatientParam = urlParams.get('fhirPatientId');
+			if (fhirPatientParam !== null) {
+			$j('.custom-dialog > *').css('background-color', '#babad9');
+			} else {
+			}
+            $j(this).html('<div id="container"></div>' );
+
+            var jsonObject = null;
+            try {
+                jsonObject = JSON.parse(content);
+                console.log(jsonObject);
+            } catch (error) {
+                console.error('Error parsing JSON:', error);
+            }
+            createTable(jsonObject.parent, 'Nouveau Patient:', '#7C7AD2');
+            createTable(jsonObject.auto, 'Correspondances parfaites:','#33CCCC');
+            createTable(jsonObject.potential, 'Correspondances potentielles:', '#FFD966');
+            createTable(jsonObject.conflict, 'Conflits de correspondance:','#FF8C66');
+
+			if (fhirPatientParam !== null) {
+				$j('.createButton').show().css('display', 'block');
+				$j('.importButton').hide();
+
+			}else {
+				if ($j('.createCheckbox').length > 0 && !$j('.importButton:visible').length) {
+					$j('.createButton').hide();
+
+					$j('.createCheckbox').change(function() {
+						const allChecked = $j('.createCheckbox').length === $j('.createCheckbox:checked').length;
+
+						if (allChecked) {
+							$j('.createButton').show().css('display', 'block');
+
+						} else {
+							$j('.createButton').hide();
+
+						}
+					});
+				}
+			}
+        }
+    });
+
+    function createTable(data, category, color) {
+        var tableHtml = '<table class="custom-table">';
+        tableHtml += '<thead><tr style="background-color: ' + color + ';"><th style="display: none;">ID</th><th>Nom de famille</th><th>Prenom(s)</th><th>Date de naissance</th><th>Sexe</th><th>Telephone</th><th>code d&apos;	identification</th><th>Status</th><th>Site</th><th>Action</th></tr></thead>';
+        tableHtml += '<tbody>';
+
+        if (data.length === 0) {
+            tableHtml += '<tr><td colspan="10">Aucun patient disponible</td></tr>';
+        } else {
+            for (var i = 0; i < data.length; i++) {
+                tableHtml += '<tr>';
+                tableHtml += '<td style="display: none;">' + data[i].id + '</td>';
+				tableHtml += '<td>' + data[i].family + '</td>';
+                tableHtml += '<td>' + data[i].given + '</td>';
+				tableHtml += '<td>' + new Date(data[i].birthDate).toLocaleDateString('en-GB') + '</td>';
+
+                tableHtml += '<td>' + data[i].gender + '</td>';
+                tableHtml += '<td>' + data[i].phone + '</td>';
+
+                // Separate columns for identifiers
+                tableHtml += '<td>';
+                for (var identifierKey in data[i]) {
+                    if (identifierKey.startsWith('identifier_') && identifierKey.substring(11) !== 'http://clientregistry.org/openmrs') {
+                        tableHtml += '<div><strong>' + (identifierKey.substring(11) === 'http://openelis-global.org/pat_nationalId'? 'CODE ARV': identifierKey.substring(11) === 'https://openmrs.org/UPI'? 'UPI': '')  + ':</strong> ' + data[i][identifierKey] + '</div>';
+                    }																	
+                }
+                tableHtml += '</td>';
+
+                tableHtml += '<td>';
+				for (var extensionKey in data[i]) {
+                    if (extensionKey.startsWith('extension_patient_status')) {
+						if(extensionKey === 'extension_patient_status' && data[i][extensionKey].normalize('NFKD') === 'Transféré(e)'.normalize('NFKD') &&
+						(!data[i]['extension_imported'] || data[i]['extension_imported'] !== 'yes')
+						){
+							isAutoTransferred = true;
+						}
+						tableHtml += '<strong>' + (extensionKey.substring(10) === 'patient_status'? 'Patient Status': extensionKey.substring(10) === 'patient_status_date'? 'Patient Status Date': extensionKey.substring(10) === 'patient_date_enrollement'? 'Patient Enrollment Date': '') + ':</strong> ' + (new Date(data[i][extensionKey]).toString() !== 'Invalid Date' ? new Date(data[i][extensionKey]).toLocaleDateString('en-US') : data[i][extensionKey]) + '<br>';
+
+                    }
+                }
+                tableHtml += '</td>';
+				tableHtml += '<td>' + data[i].source + '</td>';
+
+                if(category == 'Correspondances parfaites:' && isAutoTransferred){
+					autoTransferExist = true;
+                    tableHtml += '<td><button class="importButton" onclick="importData(this)">Import</button></td>';
+                }else if(category == 'Nouveau Patient:'){
+                    tableHtml += '<td><button class="createButton" onclick="ContinueCreate(this)">Create</button></td>';
+                }else if(category == 'Correspondances potentielles:'){
+					tableHtml += '<td><input type="checkbox" class="createCheckbox"></td>';
+                }else{
+					tableHtml += '<td></td>';
+
+				}
+                tableHtml += '</tr>';
+				isAutoTransferred = false;
+
+            }
+        }
+
+        tableHtml += '</tbody>';
+        tableHtml += '</table>';
+
+        $j('#container').append('<h2>' + category + ' ' + data.length + '</h2>');
+        $j('#container').append(tableHtml);
+		if (autoTransferExist) {
+			$j('.createButton').hide();
+		}
+    }
+
+    function importData(button) {
+        // Find the closest tr (table row) to the clicked button
+        var row = button.closest('tr');
+
+        // Get the content of the first td (assuming it contains the ID)
+        var id = row.querySelector('td:first-child').textContent;
+        document.location = "shortPatientForm.form?fhirPatientId=" + id;
+
+    }
+
+	function ContinueCreate(button) {
+		$j('.custom-dialog').find('button:contains("Continue")').click();
+    }
+
+    function handleSaveResults(result) {
+        // This method will be called by DWR with the search results
+        // Do something with the search results here, such as displaying them on the page
+        if (result.hasOwnProperty("success")) {
+            document.location = "admin/patients/shortPatientForm.form?fhirPatientId=" + result["success"];
+
+        } else {
+            alert("Error: " + result["error"]);
+
+        }
+    }
+	$j('.custom-dialog').parent().find('button:contains("Continue")').hide();
+
+}else if (content2.trim() !== ''){
+	$j('<div>').dialog({
+        title: '<openmrs:message code="legacyui.patient.matchingResults"/>',
+        autoOpen: true, // Automatically open the dialog when the page loads
+        draggable: false,
+        resizable: false,
+        width: '95%',
+        dialogClass: 'custom-dialog', // Define a custom CSS class
+        modal: true,
+        buttons: {
+            "Continue": function() {
+                $j(this).dialog("close");
+                $j('#continueFlag').val('continue');
+                //$j('input[name="continueFlag"]').val('yourDynamicValue');
+
+                $j('#addButton').click();
+
+
+            },
+            "Cancel": function() {
+                $j(this).dialog("close");
+            }
+        },
+        open: function() {
+            // var tableHtml = createTable(jsonObject); // Create the table
+            //$j(this).html(tableHtml); // Set the table as the dialog content
+            //document.getElementById('extraData1').textContent;
+            var content = document.getElementById('extraData2').textContent;
+             $j(this).html(content);
+            
+        }
+    });
+};
 </script>
 
 <%@ include file="/WEB-INF/view/module/legacyui/template/footer.jsp" %>

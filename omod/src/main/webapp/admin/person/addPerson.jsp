@@ -42,6 +42,7 @@
 				dojo.event.topic.subscribe("pSearch/select", 
 					function(msg) {
 						document.getElementById("personId").value = msg.objs[0].personId;
+						document.getElementById("patientPresent").value = msg.objs[0].patientPresent;
 						document.getElementById("addPersonForm").submit();
 					}
 				);
@@ -78,6 +79,7 @@
 		
 		<br/>
 		<input type="hidden" name="personId" id="personId" />
+		<input type="hidden" name="patientPresent" id="patientPresent"/>
 		<input type="hidden" name="personType" value="<c:out value='${param.personType}' />" />
 		<input type="hidden" name="viewType" value="<c:out value='${param.viewType}' />" />
 		

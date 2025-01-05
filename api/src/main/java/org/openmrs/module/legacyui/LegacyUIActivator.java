@@ -11,15 +11,32 @@ package org.openmrs.module.legacyui;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.openmrs.api.PatientService;
 import org.openmrs.module.BaseModuleActivator;
 import org.openmrs.module.ModuleActivator;
+import org.openmrs.module.fhir2.api.FhirPatientIdentifierSystemService;
+import org.springframework.beans.BeansException;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationContext;
+import org.springframework.context.ApplicationContextAware;
 
 /**
  * This class contains the logic that is run every time this module is either started or stopped.
  */
-public class LegacyUIActivator extends BaseModuleActivator {
+import org.springframework.stereotype.Component;
+
+@Component
+public class LegacyUIActivator extends BaseModuleActivator implements ApplicationContextAware {
 	
 	protected Log log = LogFactory.getLog(getClass());
+	
+	private static ApplicationContext applicationContext;
+	
+	@Autowired
+	PatientService patientService;
+	
+	@Autowired
+	FhirPatientIdentifierSystemService fhirPatientIdentifierSystemService;
 	
 	/**
 	 * @see ModuleActivator#willRefreshContext()
@@ -46,6 +63,7 @@ public class LegacyUIActivator extends BaseModuleActivator {
 	 * @see ModuleActivator#started()
 	 */
 	public void started() {
+		applicationContext.getAutowireCapableBeanFactory().autowireBean(this);
 		log.info("Legacy UI Module started");
 	}
 	
@@ -63,4 +81,9 @@ public class LegacyUIActivator extends BaseModuleActivator {
 		log.info("Legacy UI Module stopped");
 	}
 	
+	@Override
+	public void setApplicationContext(ApplicationContext applicationContext) throws BeansException {
+		// TODO Auto-generated method stub
+		this.applicationContext = applicationContext;
+	}
 }

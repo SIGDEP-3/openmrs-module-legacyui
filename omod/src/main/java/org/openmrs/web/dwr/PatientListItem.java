@@ -15,7 +15,8 @@ import org.openmrs.Patient;
 import org.openmrs.PatientIdentifier;
 import org.openmrs.web.WebUtil;
 
-import java.util.Set;
+import java.util.ArrayList;
+import java.util.List;
 
 public class PatientListItem extends PersonListItem {
 	
@@ -29,6 +30,10 @@ public class PatientListItem extends PersonListItem {
 	
 	private String otherIdentifiers = "";
 	
+	private List<String> clientRegistryUId = new ArrayList<>();
+
+	private String clientRegistryId = "";
+
 	public PatientListItem() {
 	}
 	
@@ -48,6 +53,10 @@ public class PatientListItem extends PersonListItem {
 				identifier = WebUtil.escapeHTML(patientIdentifier.getIdentifier());
 				// get patient's identifiers
 				for (PatientIdentifier pi : patient.getIdentifiers()) {
+					if (pi.getIdentifierType().getUuid().equals("43a6e699-c2b8-4d5f-9e7f-cf19448d59b7") && pi.getIdentifier() != null) {
+						clientRegistryUId.add(pi.getIdentifier());
+					}
+					
 					if (!pi.getIdentifier().equals(identifier)) {
 						if (!"".equals(otherIdentifiers)) {
 							otherIdentifiers += ",";
@@ -113,6 +122,27 @@ public class PatientListItem extends PersonListItem {
 	 */
 	public String getIdentifierTypeName() {
 		return identifierTypeName;
+	}
+	
+	/**
+	 * @param clientRegistryUId the clientRegistryId to set
+	 */
+ 	public void setClientRegistryId(String clientRegistryId) {
+		this.clientRegistryId = clientRegistryId;
+	} 
+	
+		/**
+	 * @return the clientRegistryId
+	 */
+	public String getClientRegistryId() {
+		return clientRegistryId;
+	}
+
+	/**
+	 * @return the clientRegistryUId
+	 */
+	public List<String> getclientRegistryUId() {
+		return clientRegistryUId;
 	}
 	
 }

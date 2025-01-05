@@ -68,6 +68,8 @@ public class PersonListItem {
 	
 	private Map<String, String> attributes = new HashMap<String, String>();
 	
+	private String patientPresent = "";
+	
 	/**
 	 * Creates an instance of a subclass of PersonListItem which is best suited for the parameter.
 	 * If a {@link Patient} is passed in, a {@link PatientListItem} is returned, otherwise a
@@ -379,6 +381,10 @@ public class PersonListItem {
 		return age;
 	}
 	
+	public void setAge(int age) {
+		this.age = age;
+	}
+	
 	public Map<String, String> getAttributes() {
 		return attributes;
 	}
@@ -404,4 +410,21 @@ public class PersonListItem {
 		return uuid;
 	}
 	
+	public void setUuid(String uuid) {
+		this.uuid = uuid;
+	}
+	
+	/**
+	 * @param patientPresent the patientPresent to set
+	 */
+	public void setPatientPresent(String patientPresent) {
+		this.patientPresent = patientPresent;
+	}
+	
+	/**
+	 * @return the patientPresent
+	 */
+	public String getPatientPresent() {
+		return patientPresent;
+	}
 }

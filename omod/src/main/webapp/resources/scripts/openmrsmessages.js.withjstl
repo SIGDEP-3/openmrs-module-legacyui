@@ -4,6 +4,7 @@
 var omsgs = new Array();
 var gp = new Array();
 var userProperties = new Array();
+omsgs.action="<openmrs:message code="general.action" javaScriptEscape="true"/>";
 omsgs.minSearchCharactersGP="<openmrs:globalProperty key="minSearchCharacters" defaultValue="2"/>";
 omsgs.datePattern="<openmrs:datePattern />";
 omsgs.name="<openmrs:message javaScriptEscape="true" code="general.name"/>";
